@@ -98,6 +98,12 @@ import com.it10x.foodappgstav7_30.ui.pos.RetailPosScreen
 import com.it10x.foodappgstav7_30.ui.kot.history.KotHistoryViewModelFactory
 import com.it10x.foodappgstav7_30.ui.pos.RunningOrdersScreen
 import com.it10x.foodappgstav7_30.ui.tables.TableChangeScreen
+import com.it10x.foodappgstav7_30.data.pos.repository.loyalty.LoyaltyRepository
+import com.it10x.foodappgstav7_30.data.pos.viewmodel.loyalty.LoyaltyViewModel
+import com.it10x.foodappgstav7_30.ui.loyalty.LoyaltyScreen
+
+private const val LOYALTY_OWNER_ID = "DEFAULT_OWNER"
+private const val LOYALTY_OUTLET_ID = "DEFAULT_OUTLET"
 
 @Composable
 fun NavigationHost(
@@ -856,6 +862,9 @@ fun NavigationHost(
                 viewModel = viewModel,
                 onCustomerClick = { customerId ->
                     navController.navigate("customer_ledger/$customerId")
+                },
+                onLoyaltyClick = { customerId ->
+                    navController.navigate("loyalty/$customerId")
                 }
             )
         }
@@ -886,6 +895,33 @@ fun NavigationHost(
                 viewModel = viewModel,
                 onBack = { navController.popBackStack() }
             )
+        }
+
+
+        composable("loyalty/{customerId}") { backStackEntry ->
+
+            val customerId = backStackEntry.arguments
+                ?.getString("customerId")
+
+            if (customerId != null) {
+
+                val loyaltyRepository = remember(db) {
+                    LoyaltyRepository(db)
+                }
+
+                val loyaltyViewModel: LoyaltyViewModel = viewModel(
+                    factory = LoyaltyViewModel.Factory(loyaltyRepository)
+                )
+
+                // Replace these with the actual fields from OutletEntity
+                // and your logged-in owner/session data.
+                LoyaltyScreen(
+                    customerId = customerId,
+                    ownerId = LOYALTY_OWNER_ID,
+                    outletId = LOYALTY_OUTLET_ID,
+                    viewModel = loyaltyViewModel
+                )
+            }
         }
 
 

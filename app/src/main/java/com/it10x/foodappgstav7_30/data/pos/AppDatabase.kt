@@ -16,8 +16,15 @@ import androidx.room.Entity
 import com.it10x.foodappgstav7_30.data.online.local.OnlineReceivedOrderDao
 import com.it10x.foodappgstav7_30.data.online.local.OnlineReceivedOrderEntity
 import com.it10x.foodappgstav7_30.data.online.local.OnlineReceivedOrderProductEntity
+import com.it10x.foodappgstav7_30.data.pos.entities.loyalty.*
+import androidx.room.TypeConverters
+import com.it10x.foodappgstav7_30.data.pos.entities.loyalty.LoyaltyConverters
+import com.it10x.foodappgstav7_30.data.pos.dao.loyalty.*
+@TypeConverters(
 
+    LoyaltyConverters::class
 
+)
 @Database(
     entities = [
         ProductEntity::class,
@@ -54,9 +61,25 @@ import com.it10x.foodappgstav7_30.data.online.local.OnlineReceivedOrderProductEn
         OrderSerialMapEntity::class,
         PosRenewalEntity::class,
         OnlineReceivedOrderEntity::class,
-        OnlineReceivedOrderProductEntity::class
+        OnlineReceivedOrderProductEntity::class,
+
+
+        LoyaltyProgramEntity::class,
+        LoyaltyProgramOutletEntity::class,
+        LoyaltyTierEntity::class,
+        LoyaltyAccountEntity::class,
+        LoyaltyTransactionEntity::class,
+        LoyaltyPointLotEntity::class,
+        LoyaltyPointAllocationEntity::class,
+        LoyaltyRewardEntity::class,
+        LoyaltyRewardRedemptionEntity::class,
+        LoyaltyVoucherEntity::class,
+        LoyaltyVoucherUsageEntity::class,
+        LoyaltyCampaignEntity::class,
+        LoyaltyCampaignUsageEntity::class,
+        LoyaltyReferralEntity::class,
     ],
-    version = 160,              // ⬆️ increment version since schema changed
+    version = 161,              // ⬆️ increment version since schema changed
     exportSchema = true
 )
 abstract class AppDatabase : RoomDatabase() {
@@ -107,5 +130,22 @@ abstract class AppDatabase : RoomDatabase() {
     abstract fun posRenewalDao(): PosRenewalDao
 
     abstract fun onlineReceivedOrderDao(): OnlineReceivedOrderDao
+
+
+    // Loyalty DAOs
+    abstract fun loyaltyProgramDao(): LoyaltyProgramDao
+    abstract fun loyaltyProgramOutletDao(): LoyaltyProgramOutletDao
+    abstract fun loyaltyTierDao(): LoyaltyTierDao
+    abstract fun loyaltyAccountDao(): LoyaltyAccountDao
+    abstract fun loyaltyTransactionDao(): LoyaltyTransactionDao
+    abstract fun loyaltyPointLotDao(): LoyaltyPointLotDao
+    abstract fun loyaltyPointAllocationDao(): LoyaltyPointAllocationDao
+    abstract fun loyaltyRewardDao(): LoyaltyRewardDao
+    abstract fun loyaltyRewardRedemptionDao(): LoyaltyRewardRedemptionDao
+    abstract fun loyaltyVoucherDao(): LoyaltyVoucherDao
+    abstract fun loyaltyVoucherUsageDao(): LoyaltyVoucherUsageDao
+    abstract fun loyaltyCampaignDao(): LoyaltyCampaignDao
+    abstract fun loyaltyCampaignUsageDao(): LoyaltyCampaignUsageDao
+    abstract fun loyaltyReferralDao(): LoyaltyReferralDao
 
 }

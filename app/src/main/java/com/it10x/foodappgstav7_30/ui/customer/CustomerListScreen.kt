@@ -7,6 +7,7 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Receipt
+import androidx.compose.material.icons.filled.Star
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -19,7 +20,8 @@ import com.it10x.foodappgstav7_30.data.pos.entities.PosCustomerEntity
 @Composable
 fun CustomerListScreen(
     viewModel: CustomerViewModel,
-    onCustomerClick: (String) -> Unit
+    onCustomerClick: (String) -> Unit,
+    onLoyaltyClick: (String) -> Unit
 ) {
 
     val customers by viewModel.customers.collectAsState(initial = emptyList())
@@ -83,7 +85,11 @@ fun CustomerListScreen(
 
             LazyColumn {
                 items(filteredCustomers) { customer ->
-                    CustomerRow(customer, onCustomerClick)
+                    CustomerRow(
+                        customer,
+                        onCustomerClick,
+                        onLoyaltyClick = onLoyaltyClick
+                    )
                 }
             }
         }
@@ -94,13 +100,16 @@ fun CustomerListScreen(
 @Composable
 fun CustomerRow(
     customer: PosCustomerEntity,
-    onCustomerClick: (String) -> Unit
+    onCustomerClick: (String) -> Unit,
+    onLoyaltyClick: (String) -> Unit
 ) {
     Card(
         modifier = Modifier
             .fillMaxWidth()
             .padding(8.dp)
-            .clickable { onCustomerClick(customer.id) }
+            .clickable {
+                onCustomerClick(customer.id)
+            }
     ) {
         Row(
             modifier = Modifier
@@ -109,10 +118,16 @@ fun CustomerRow(
             horizontalArrangement = Arrangement.SpaceBetween,
             verticalAlignment = Alignment.CenterVertically
         ) {
-
             Column(modifier = Modifier.weight(1f)) {
-                Text(customer.name ?: "No Name", fontWeight = FontWeight.SemiBold)
-                Text("📞 ${customer.phone}", style = MaterialTheme.typography.bodySmall)
+                Text(
+                    customer.name ?: "No Name",
+                    fontWeight = FontWeight.SemiBold
+                )
+
+                Text(
+                    "📞 ${customer.phone}",
+                    style = MaterialTheme.typography.bodySmall
+                )
             }
 
             if (customer.currentDue > 0) {
@@ -122,16 +137,39 @@ fun CustomerRow(
                 ) {
                     Text(
                         "₹${customer.currentDue}",
-                        modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
+                        modifier = Modifier.padding(
+                            horizontal = 8.dp,
+                            vertical = 4.dp
+                        ),
                         color = Color(0xFFB71C1C)
                     )
                 }
             }
 
-            IconButton(onClick = { onCustomerClick(customer.id) }) {
-                Icon(Icons.Default.Receipt, contentDescription = "View Ledger")
+            // Customer Ledger
+            IconButton(
+                onClick = {
+                    onCustomerClick(customer.id)
+                }
+            ) {
+                Icon(
+                    Icons.Default.Receipt,
+                    contentDescription = "View Ledger"
+                )
+            }
+
+            // Customer Loyalty
+            IconButton(
+                onClick = {
+                    onLoyaltyClick(customer.id)
+                }
+            ) {
+                Icon(
+                    imageVector = Icons.Default.Star,
+                    contentDescription = "Loyalty",
+                    tint = Color(0xFFFFA000)
+                )
             }
         }
-
     }
 }

@@ -300,6 +300,28 @@ fun RestaurantMainMenu(
         }
     )
 
+
+//    NavigationDrawerItem(
+//        label = { Text("Loyalty Program") },
+//        selected = false,
+//        onClick = {
+//            scope.launch {
+//                drawerState.close()
+//            }
+//
+//            navController.navigate("loyalty") {
+//                launchSingleTop = true
+//            }
+//        }
+//    )
+
+    Divider(
+        modifier = Modifier
+            .padding(horizontal = 16.dp)
+            .padding(bottom = 4.dp),
+        thickness = 0.5.dp
+    )
+
     Divider(
         modifier = Modifier
             .padding(horizontal = 16.dp)
