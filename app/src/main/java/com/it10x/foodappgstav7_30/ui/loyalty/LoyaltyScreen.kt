@@ -28,9 +28,17 @@ fun LoyaltyScreen(
     val errorMessage by viewModel.errorMessage.collectAsState()
     val successMessage by viewModel.successMessage.collectAsState()
 
-    LaunchedEffect(customerId, ownerId) {
-        viewModel.loadCustomerAccounts(customerId)
-        viewModel.loadPrograms(ownerId)
+    var showAddPointsDialog by remember { mutableStateOf(false) }
+    var pointsInput by remember { mutableStateOf("") }
+    var pointsReason by remember { mutableStateOf("") }
+    var pointsInputError by remember { mutableStateOf<String?>(null) }
+
+    LaunchedEffect(customerId, ownerId, outletId) {
+        viewModel.initializeLoyalty(
+            customerId = customerId,
+            ownerId = ownerId,
+            outletId = outletId
+        )
     }
 
     Column(
@@ -40,6 +48,7 @@ fun LoyaltyScreen(
             .padding(16.dp),
         verticalArrangement = Arrangement.spacedBy(16.dp)
     ) {
+
         // HEADER
         Text(
             text = "Customer Loyalty",
@@ -146,12 +155,14 @@ fun LoyaltyScreen(
                                 color = MaterialTheme.colorScheme.onSurfaceVariant
                             )
 
-                            program.description?.takeIf { it.isNotBlank() }?.let { description ->
-                                Text(
-                                    text = description,
-                                    style = MaterialTheme.typography.bodySmall
-                                )
-                            }
+                            program.description
+                                ?.takeIf { it.isNotBlank() }
+                                ?.let { description ->
+                                    Text(
+                                        text = description,
+                                        style = MaterialTheme.typography.bodySmall
+                                    )
+                                }
                         }
 
                         Button(
@@ -221,6 +232,20 @@ fun LoyaltyScreen(
                 color = MaterialTheme.colorScheme.primary
             )
 
+            // ADD POINTS BUTTON
+            Button(
+                onClick = {
+                    pointsInput = ""
+                    pointsReason = ""
+                    pointsInputError = null
+                    showAddPointsDialog = true
+                },
+                enabled = !isLoading && account.isActive,
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                Text("Add Points")
+            }
+
             LoyaltyTransactionList(
                 transactions = transactions
             )
@@ -232,5 +257,105 @@ fun LoyaltyScreen(
                 vouchers = vouchers
             )
         }
+    }
+
+    // ADD POINTS DIALOG
+    if (showAddPointsDialog) {
+        AlertDialog(
+            onDismissRequest = {
+                if (!isLoading) {
+                    showAddPointsDialog = false
+                }
+            },
+            title = {
+                Text("Add Loyalty Points")
+            },
+            text = {
+                Column(
+                    verticalArrangement = Arrangement.spacedBy(12.dp)
+                ) {
+                    Text(
+                        text = "Enter the number of points to add to this customer's account."
+                    )
+
+                    OutlinedTextField(
+                        value = pointsInput,
+                        onValueChange = {
+                            pointsInput = it.filter { character ->
+                                character.isDigit()
+                            }
+                            pointsInputError = null
+                        },
+                        label = {
+                            Text("Points")
+                        },
+                        placeholder = {
+                            Text("Example: 100")
+                        },
+                        singleLine = true,
+                        isError = pointsInputError != null,
+                        supportingText = {
+                            pointsInputError?.let {
+                                Text(
+                                    text = it,
+                                    color = MaterialTheme.colorScheme.error
+                                )
+                            }
+                        },
+                        modifier = Modifier.fillMaxWidth()
+                    )
+
+                    OutlinedTextField(
+                        value = pointsReason,
+                        onValueChange = {
+                            pointsReason = it
+                        },
+                        label = {
+                            Text("Reason (optional)")
+                        },
+                        placeholder = {
+                            Text("Example: Birthday bonus")
+                        },
+                        modifier = Modifier.fillMaxWidth()
+                    )
+                }
+            },
+            confirmButton = {
+                Button(
+                    enabled = !isLoading,
+                    onClick = {
+                        val points = pointsInput.toIntOrNull()
+
+                        if (points == null || points <= 0) {
+                            pointsInputError =
+                                "Enter a valid number greater than zero."
+                        } else {
+                            viewModel.addManualPoints(
+                                accountId = selectedAccount?.id.orEmpty(),
+                                points = points,
+                                outletId = outletId,
+                                description = pointsReason
+                                    .trim()
+                                    .ifBlank { "Manual points added" }
+                            )
+
+                            showAddPointsDialog = false
+                        }
+                    }
+                ) {
+                    Text("Add Points")
+                }
+            },
+            dismissButton = {
+                TextButton(
+                    enabled = !isLoading,
+                    onClick = {
+                        showAddPointsDialog = false
+                    }
+                ) {
+                    Text("Cancel")
+                }
+            }
+        )
     }
 }

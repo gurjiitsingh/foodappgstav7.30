@@ -12,7 +12,7 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.launch
-
+import java.util.UUID
 class LoyaltyViewModel(
     private val repository: LoyaltyRepository
 ) : ViewModel() {
@@ -115,6 +115,63 @@ class LoyaltyViewModel(
     private var vouchersJob: Job? = null
 
 
+
+    // ========================================================
+// INITIALIZE LOYALTY FOR CUSTOMER
+// ========================================================
+
+    fun initializeLoyalty(
+        customerId: String,
+        ownerId: String,
+        outletId: String
+    ) {
+
+        if (customerId.isBlank()) {
+            _errorMessage.value = "Customer ID is required"
+            return
+        }
+
+        if (ownerId.isBlank()) {
+            _errorMessage.value = "Owner ID is required"
+            return
+        }
+
+        if (outletId.isBlank()) {
+            _errorMessage.value = "Outlet ID is required"
+            return
+        }
+
+        viewModelScope.launch {
+
+            _errorMessage.value = null
+
+            try {
+
+                // 1. Create the default programme and outlet mapping.
+                repository.ensureDefaultProgram(
+                    ownerId = ownerId,
+                    outletId = outletId
+                )
+                _programs.value = repository.getActivePrograms(ownerId)
+                // 2. Load customer's existing accounts.
+                loadCustomerAccounts(customerId)
+
+                // 3. Observe available programmes.
+                loadPrograms(ownerId)
+
+            } catch (e: CancellationException) {
+
+                throw e
+
+            } catch (e: Exception) {
+
+                _errorMessage.value =
+                    e.message ?: "Unable to initialize loyalty"
+
+            }
+        }
+    }
+
     // ========================================================
     // LOAD CUSTOMER ACCOUNTS
     // ========================================================
@@ -130,7 +187,6 @@ class LoyaltyViewModel(
 
         accountsJob = viewModelScope.launch {
 
-            _isLoading.value = true
             _errorMessage.value = null
 
             try {
@@ -151,15 +207,13 @@ class LoyaltyViewModel(
 
             } catch (e: CancellationException) {
                 throw e
+
             } catch (e: Exception) {
                 _errorMessage.value =
                     e.message ?: "Unable to load customer accounts"
-            } finally {
-                _isLoading.value = false
             }
         }
     }
-
 
     // ========================================================
     // LOAD LOYALTY PROGRAMS
@@ -396,6 +450,72 @@ class LoyaltyViewModel(
     }
 
 
+    // ========================================================
+// MANUALLY ADD LOYALTY POINTS
+// ========================================================
+
+    fun addManualPoints(
+        accountId: String,
+        points: Int,
+        outletId: String,
+        createdBy: String = "STAFF",
+        description: String = "Manual points added"
+    ) {
+
+        if (accountId.isBlank()) {
+            _errorMessage.value = "Loyalty account is required"
+            return
+        }
+
+        if (outletId.isBlank()) {
+            _errorMessage.value = "Outlet ID is required"
+            return
+        }
+
+        if (points <= 0) {
+            _errorMessage.value = "Points must be greater than zero"
+            return
+        }
+
+        viewModelScope.launch {
+
+            _isLoading.value = true
+            _errorMessage.value = null
+            _successMessage.value = null
+
+            try {
+
+                repository.earnPoints(
+                    accountId = accountId,
+                    points = points,
+                    spendMinor = 0L,
+                    idempotencyKey = "MANUAL-${UUID.randomUUID()}",
+                    orderId = null,
+                    orderNo = null,
+                    outletId = outletId,
+                    businessDate = null,
+                    createdBy = createdBy,
+                    description = description
+                )
+
+                _successMessage.value =
+                    "$points loyalty points added successfully"
+
+            } catch (e: CancellationException) {
+
+                throw e
+
+            } catch (e: Exception) {
+
+                _errorMessage.value =
+                    e.message ?: "Unable to add loyalty points"
+
+            } finally {
+
+                _isLoading.value = false
+            }
+        }
+    }
     // ========================================================
     // REDEEM POINTS
     // ========================================================

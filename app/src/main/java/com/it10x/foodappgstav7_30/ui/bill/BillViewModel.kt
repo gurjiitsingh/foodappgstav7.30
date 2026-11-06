@@ -72,6 +72,7 @@ import kotlin.Double
 import com.it10x.foodappgstav7_30.ui.pos.PosSessionViewModel
 import com.it10x.foodappgstav7_30.data.pos.AppDatabase
 import androidx.room.withTransaction
+import com.it10x.foodappgstav7_30.data.pos.repository.loyalty.LoyaltyRepository
 
 class BillViewModel(
     private val app: Application,
@@ -168,6 +169,16 @@ class BillViewModel(
     private val _creditPaise = MutableStateFlow(0L)
     val creditPaise: StateFlow<Long> = _creditPaise
 
+    private val loyaltyRepository by lazy {
+        LoyaltyRepository(db)
+    }
+
+    // ============================================================
+// CUSTOMER LOYALTY POINTS
+// ============================================================
+
+    private val _customerLoyaltyPoints = MutableStateFlow(0)
+    val customerLoyaltyPoints: StateFlow<Int> = _customerLoyaltyPoints
 
     fun setCreditAmountRaw(input: String) {
         val clean = input.trim()
@@ -253,8 +264,64 @@ class BillViewModel(
     }
 
     fun setCustomerPhone(phone: String) {
+
         _uiState.update {
             it.copy(customerPhone = phone)
+        }
+
+        // Reset old customer's points immediately.
+        _customerLoyaltyPoints.value = 0
+
+        val cleanPhone = phone.trim()
+
+        if (cleanPhone.isBlank()) return
+
+        viewModelScope.launch {
+            try {
+                val outlet = outletDao.getOutlet() ?: return@launch
+
+                val program = loyaltyRepository.ensureDefaultProgram(
+                    ownerId = outlet.ownerId,
+                    outletId = outlet.outletId
+                )
+
+                if (!program.isActive) return@launch
+
+                // Look up an existing account only.
+                // Do not create an account just to display points.
+                val account = loyaltyRepository.getAccount(
+                    customerId = cleanPhone,
+                    programId = program.id,
+                    outletId = outlet.outletId
+                )
+
+                val points = if (account != null) {
+                    loyaltyRepository.getAvailablePoints(account.id)
+                } else {
+                    0
+                }
+
+                // Prevent an older lookup from replacing the
+                // balance of a newly selected customer.
+                if (_uiState.value.customerPhone.trim() == cleanPhone) {
+                    _customerLoyaltyPoints.value = points
+                }
+
+                Log.d(
+                    "CUSTOMER_LOYALTY",
+                    "Phone: $cleanPhone | Available points: $points"
+                )
+
+            } catch (e: Exception) {
+                Log.e(
+                    "CUSTOMER_LOYALTY",
+                    "Failed to load customer points",
+                    e
+                )
+                if (_uiState.value.customerPhone.trim() == cleanPhone) {
+                    _customerLoyaltyPoints.value = 0
+                }
+            }
         }
     }
 
@@ -415,6 +482,9 @@ class BillViewModel(
         _deliveryTaxPercent.value = 5.0   // or 0.0 if you want
 
         _creditPaise.value = 0L
+
+        _customerLoyaltyPoints.value = 0
+
 
         _deliveryAddress.value = null
 
@@ -1816,31 +1886,79 @@ class BillViewModel(
                         // ==========================================
                         // 6. SAVE PAYMENTS OLD NOT USED
                         // ==========================================
+// ============================================================
+// LOYALTY POINTS — AWARD ONLY WHEN CUSTOMER PHONE IS PROVIDED
+// ============================================================
 
-//                        if (payments.isNotEmpty() && totalPaidPaise > 0) {
-//
-//                            val paymentEntities = payments.map {
-//                                PosOrderPaymentEntity(
-//                                    id = UUID.randomUUID().toString(),
-//                                    orderId = orderId,
-//                                    ownerId = outlet.ownerId,
-//                                    outletId = outlet.outletId,
-//                                    amount = MoneyUtils.fromPaise(it.amount),
-//                                    mode = it.mode,
-//                                    provider = null,
-//                                    method = null,
-//                                    status = "SUCCESS",
-//                                    deviceId = "POS",
-//                                    createdAt = now,
-//                                    businessDate = businessDate,
-//                                    syncStatus = "PENDING"
-//                                )
-//                            }
-//
-//                            paymentRepository.insertPayments(
-//                                paymentEntities
-//                            )
-//                        }
+                        if (!inputPhone.isBlank() && resolvedCustomerId != null) {
+                            val program = loyaltyRepository.ensureDefaultProgram(
+                                ownerId = outlet.ownerId,
+                                outletId = outlet.outletId
+                            )
+
+                            if (program.isActive) {
+
+                                // Food/product amount after discount.
+                                // Tax and delivery fee are excluded.
+                                val eligibleSpendPaise =
+                                    (itemSubtotalPaise - safeDiscountPaise).coerceAtLeast(0L)
+
+                                // Respect the programme's discounted-bill setting.
+                                val canEarn = safeDiscountPaise <= 0L ||
+                                        program.allowEarnOnDiscountedBills
+
+                                val points = if (
+                                    canEarn &&
+                                    eligibleSpendPaise > 0L &&
+                                    program.earnSpendMinor > 0L &&
+                                    program.earnPoints > 0
+                                ) {
+                                    val earningBlocks =
+                                        eligibleSpendPaise / program.earnSpendMinor
+
+                                    val calculatedPoints =
+                                        earningBlocks * program.earnPoints.toLong()
+
+                                    calculatedPoints
+                                        .coerceAtMost(Int.MAX_VALUE.toLong())
+                                        .toInt()
+                                } else {
+                                    0
+                                }
+
+                                if (points > 0) {
+                                    val account = loyaltyRepository.getOrCreateAccount(
+                                        customerId = resolvedCustomerId,
+                                        programId = program.id,
+                                        outletId = outlet.outletId
+                                    )
+
+                                    loyaltyRepository.earnPoints(
+                                        accountId = account.id,
+                                        points = points,
+                                        spendMinor = eligibleSpendPaise,
+                                        idempotencyKey = "ORDER_EARN:$orderId",
+                                        orderId = orderId,
+                                        orderNo = srNo,
+                                        outletId = outlet.outletId,
+                                        businessDate = businessDate,
+                                        createdBy = finalizedById,
+                                        description = "Points earned on order $srNo"
+                                    )
+
+                                    Log.d(
+                                        "LOYALTY",
+                                        "Awarded $points points to customer $resolvedCustomerId"
+                                    )
+                                } else {
+                                    Log.d(
+                                        "LOYALTY",
+                                        "No points awarded. Eligible spend: $eligibleSpendPaise"
+                                    )
+                                }
+                            }
+                        }
+
 
                         // ==========================================
                         // 7. UPDATE KOT HISTORY

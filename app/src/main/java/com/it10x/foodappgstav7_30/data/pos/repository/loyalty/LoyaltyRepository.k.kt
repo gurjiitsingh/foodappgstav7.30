@@ -6,6 +6,8 @@ import com.it10x.foodappgstav7_30.data.pos.AppDatabase
 import com.it10x.foodappgstav7_30.data.pos.entities.loyalty.*
 import kotlinx.coroutines.flow.Flow
 import java.util.UUID
+import androidx.room.withTransaction
+import kotlinx.coroutines.flow.first
 
 class LoyaltyRepository(
     private val db: AppDatabase
@@ -578,4 +580,75 @@ class LoyaltyRepository(
 
         return tierDao.getActiveTiers(programId)
     }
+
+
+    // ============================================================
+// CREATE DEFAULT LOYALTY PROGRAM IF IT DOES NOT EXIST
+// ============================================================
+
+    suspend fun ensureDefaultProgram(
+        ownerId: String,
+        outletId: String
+    ): LoyaltyProgramEntity {
+
+        return db.withTransaction {
+
+            // Look for an existing Default Loyalty programme.
+            val existingPrograms = programDao.getByOwner(ownerId).first()
+
+            var program = existingPrograms.firstOrNull {
+                it.programName == "Default Loyalty"
+            }
+
+            // Create the programme only if it does not already exist.
+            if (program == null) {
+
+                val defaultProgramId = "DEFAULT_LOYALTY_PROGRAM"
+
+                // Avoid overwriting a programme belonging to another owner.
+                val existingId = programDao.getById(defaultProgramId)
+
+                val newProgramId = if (
+                    existingId == null || existingId.ownerId == ownerId
+                ) {
+                    defaultProgramId
+                } else {
+                    UUID.randomUUID().toString()
+                }
+
+                program = LoyaltyProgramEntity(
+                    id = newProgramId,
+                    ownerId = ownerId,
+                    programName = "Default Loyalty",
+                    scope = LoyaltyProgramScope.SHARED
+                )
+
+                programDao.insert(program)
+            }
+
+            // SHARED programmes must be linked to the outlet.
+            val isLinked = programOutletDao.isOutletLinked(
+                programId = program.id,
+                outletId = outletId
+            )
+
+            if (!isLinked) {
+
+                val mapping = LoyaltyProgramOutletEntity(
+                    id = UUID.randomUUID().toString(),
+                    ownerId = ownerId,
+                    programId = program.id,
+                    outletId = outletId,
+                    isActive = true
+                )
+
+                programOutletDao.insert(mapping)
+            }
+
+            program
+        }
+    }
+
+
+
 }
