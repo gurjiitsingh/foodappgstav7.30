@@ -25,7 +25,8 @@ object CountryBillFormatter {
         order: PrintOrder,
         kotNumberText: String,
         stewardName: String,
-        outletInfo: OutletInfo
+        outletInfo: OutletInfo,
+        earnedPoints: Int,
     ): String {
 
         return when (outletInfo.countryCode?.uppercase()) {
@@ -37,7 +38,7 @@ object CountryBillFormatter {
                     outletInfo = outletInfo,
                     kotNumberText,
                     stewardName,
-
+                    earnedPoints = earnedPoints,
                 )
             }
 
@@ -77,6 +78,7 @@ object CountryBillFormatter {
                     outletInfo = outletInfo,
                     kotNumberText,
                     stewardName,
+                    earnedPoints = earnedPoints,
 
                 )
             }

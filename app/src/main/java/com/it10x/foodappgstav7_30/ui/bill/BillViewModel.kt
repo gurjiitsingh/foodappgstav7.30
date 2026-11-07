@@ -653,6 +653,8 @@ class BillViewModel(
                 }
 
                 val safeDiscountPaise = calculation.discountPaise + calculation.loyaltyDiscountPaise
+                val loyaltyDiscountPaise =
+                    calculation.loyaltyDiscountPaise
                 val exclusiveTaxPaise = calculation.exclusiveTaxPaise
                 val inclusiveTaxPaise = calculation.inclusiveTaxPaise
 // Total GST on items (used for saving/reporting)
@@ -1370,8 +1372,61 @@ class BillViewModel(
                     discountFlat = _discountFlat.value,
                     discountPercent = _discountPercent.value,
                     deliveryFee = _deliveryFee.value,
-                    deliveryTaxPercent = _deliveryTaxPercent.value
+                    deliveryTaxPercent = _deliveryTaxPercent.value,
+                    loyaltyDiscount = _loyaltyDiscountPaise.value / 100.0
                 )
+
+
+                // ============================================================
+// LOYALTY POINTS — PROJECTED EARNING FOR PRINT
+// ============================================================
+
+                var earnedPoints = 0
+
+                val customerPhone = _uiState.value.customerPhone.trim()
+
+                if (customerPhone.isNotBlank()) {
+
+                    val program = loyaltyRepository.ensureDefaultProgram(
+                        ownerId = outlet.ownerId,
+                        outletId = outlet.outletId
+                    )
+
+                    if (program.isActive) {
+
+                        val normalDiscountPaise = calculation.discountPaise
+                        val loyaltyDiscountPaise = calculation.loyaltyDiscountPaise
+
+                        // Actual amount after both discounts.
+                        // Tax and delivery are excluded.
+                        val eligibleSpendPaise = (
+                                calculation.itemSubtotalPaise -
+                                        normalDiscountPaise -
+                                        loyaltyDiscountPaise
+                                ).coerceAtLeast(0L)
+
+                        val canEarn = normalDiscountPaise <= 0L ||
+                                program.allowEarnOnDiscountedBills
+
+                        earnedPoints = if (
+                            canEarn &&
+                            eligibleSpendPaise > 0L &&
+                            program.earnSpendMinor > 0L &&
+                            program.earnPoints > 0
+                        ) {
+                            val earningBlocks =
+                                eligibleSpendPaise / program.earnSpendMinor
+
+                            (earningBlocks * program.earnPoints.toLong())
+                                .coerceAtMost(Int.MAX_VALUE.toLong())
+                                .toInt()
+                        } else {
+                            0
+                        }
+                    }
+                }
+
+                Log.d("TEXT_PRINT", "Projected earned points = $earnedPoints")
 
 
                 val itemSubtotalPaise = calculation.itemSubtotalPaise
@@ -1409,8 +1464,13 @@ class BillViewModel(
                     return@launch
                 }
 
-                val safeDiscountPaise = calculation.discountPaise
-
+                val safeDiscountPaise =
+                    calculation.discountPaise
+                val loyaltyDiscountPaise = calculation.loyaltyDiscountPaise
+                Log.d(
+                    "TEXT_PRINT",
+                    "Loyal PT $loyaltyDiscountPaise"
+                )
                 val deliveryFeePaise = calculation.deliveryFeePaise
 
                 val deliveryTaxPaise = calculation.deliveryTaxPaise
@@ -1459,6 +1519,7 @@ class BillViewModel(
                     taxTotal = MoneyUtils.fromPaise(totalTaxPaise),
 
                     discountTotal = MoneyUtils.fromPaise(safeDiscountPaise),
+                    loyaltyDiscountPaise =MoneyUtils.fromPaise(loyaltyDiscountPaise),
                     roundOff =  MoneyUtils.fromPaise(roundOffPaise),
                     taxableAmount =  MoneyUtils.fromPaise(taxableAmountPaise),
 
@@ -1592,7 +1653,7 @@ class BillViewModel(
                 // =========================
                 // PRINT
                 // =========================
-              printOrder(orderMaster, orderItems, kotNumberText, stewardName,referenceId = orderId)
+              printOrder(orderMaster, orderItems, kotNumberText, stewardName,referenceId = orderId, earnedPoints = earnedPoints)
 
               //  sendEvent("Printed successfully")
 
@@ -2747,6 +2808,7 @@ class BillViewModel(
         kotNumberText: String="",
         stewardName: String= "",
         referenceId: String,
+        earnedPoints: Int = 0,
 
     ) = withContext(Dispatchers.IO) {
 
@@ -2784,6 +2846,7 @@ class BillViewModel(
                     kotNumberText = kotNumberText,
                     stewardName = stewardName,
                     referenceId,
+                    earnedPoints,
                 )
             }
 
@@ -2795,7 +2858,8 @@ class BillViewModel(
                     outletInfo = outletInfo,
                     kotNumberText = kotNumberText,
                     stewardName = stewardName,
-                    referenceId = referenceId
+                    referenceId = referenceId,
+                    earnedPoints = earnedPoints,
                 )
             }
         }

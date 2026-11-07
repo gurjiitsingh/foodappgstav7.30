@@ -72,6 +72,7 @@ class PrinterManager private constructor(
 
     suspend fun enqueueImagePrint(
         referenceId: String,
+        earnedPoints: Int,
         role: PrinterRole,
         bitmap: Bitmap,
         paymentMode: String? = null,
@@ -121,6 +122,7 @@ class PrinterManager private constructor(
 
             queueManager.enqueueImage(
                 referenceId = referenceId,
+                earnedPoints = earnedPoints,
                 role = role,
                 imagePath = imageFile.absolutePath,
                 paymentMode = paymentMode,
@@ -144,6 +146,7 @@ class PrinterManager private constructor(
         kotNumberText: String,
         stewardName: String,
         referenceId: String,
+        earnedPoints: Int,
     ) {
 //        Log.d("IMAGE_ORDER", "----------------------------")
 //        Log.d("IMAGE_ORDER", "itemTotal   = ${order.itemTotal}")
@@ -235,6 +238,7 @@ class PrinterManager private constructor(
             role = PrinterRole.BILLING,
             bitmap = bitmap,
             referenceId = referenceId,
+            earnedPoints = earnedPoints,
             paymentMode = paymentMode,
             grandTotal = order.grandTotal
         )
@@ -248,7 +252,8 @@ class PrinterManager private constructor(
         kotNumberText: String,
         stewardName: String,
         referenceId: String,
-    ) {
+        earnedPoints: Int = 0,
+        ) {
 
         // --------------------------------------------------
         // TEXT PRINTER SIZE
@@ -279,7 +284,7 @@ class PrinterManager private constructor(
                     kotNumberText = kotNumberText,
                     stewardName = stewardName,
                     outletInfo = outletInfo,
-
+                    earnedPoints = earnedPoints,
                 )
             }
 
@@ -302,7 +307,8 @@ class PrinterManager private constructor(
 
                 ReceiptFormatter.billing48(
                     order = order,
-                    outletInfo = outletInfo
+                    outletInfo = outletInfo,
+                    earnedPoints = earnedPoints,
                 )
             }
         }
@@ -332,11 +338,13 @@ class PrinterManager private constructor(
         // COMMON TEXT PRINT QUEUE
         // --------------------------------------------------
 
+
         enqueuePrint(
             role = PrinterRole.BILLING,
             text = receiptText,
             document = document,
             referenceId = referenceId,
+            earnedPoints = earnedPoints,
             paymentMode = paymentMode,
             grandTotal = order.grandTotal
         )
@@ -346,12 +354,19 @@ class PrinterManager private constructor(
         text: String,
         document: PrintDocument,
         referenceId: String,
+        earnedPoints: Int,
         paymentMode: String? = null,
         grandTotal: Double? = null
     ) {
        // Log.e("PRINT_DEBUG", "🔥 enqueuePrint CALLED role=$role")
+        Log.d(
+            "TEXT_PRINT",
+            text
+        )
+
+
         scope.launch {
-            queueManager.enqueue(role, document,  text, paymentMode, grandTotal,referenceId)
+            queueManager.enqueue(role, document,  text, paymentMode, grandTotal,referenceId, earnedPoints)
         }
     }
 
@@ -366,6 +381,7 @@ class PrinterManager private constructor(
         items: List<PosKotItemEntity>,
         kotNumber: String,
         referenceId: String,
+        earnedPoints: Int,
     ) {
 
         val text = ReceiptFormatter.posKitchen(
@@ -382,7 +398,8 @@ class PrinterManager private constructor(
             role = PrinterRole.KITCHEN,
             text = text,
             document = PrintDocument(text = text),
-            referenceId = referenceId
+            referenceId = referenceId,
+            earnedPoints = earnedPoints,
         )
     }
 
@@ -565,6 +582,7 @@ class PrinterManager private constructor(
         order: PrintOrder,
         kotNumberText:String,
         stewardName:String,
+
         onResult: (Boolean) -> Unit = {}
     )
     {
@@ -597,7 +615,7 @@ class PrinterManager private constructor(
         // ✅ Select format based on printer page size
         val receiptText = when (size) {
             "80mm" -> ReceiptFormatter.billing48(order, kotNumberText= kotNumberText,
-                stewardName, info,  )
+                stewardName, info, 0 )
             else -> ReceiptFormatter.billing32(order, info)
         }
 
@@ -1345,6 +1363,7 @@ class PrinterManager private constructor(
         orderType: String,
         items: List<PosKotItemEntity>,
         referenceId: String,
+        earnedPoints: Int,
         kotNumber: String,
     ) {
 
@@ -1366,6 +1385,7 @@ class PrinterManager private constructor(
                 role = PrinterRole.KITCHEN,
                 bitmap = bitmap,
                 referenceId = referenceId,
+                earnedPoints = earnedPoints,
                 paymentMode = "",
                 grandTotal = 0.0
             )

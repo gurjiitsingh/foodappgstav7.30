@@ -102,7 +102,8 @@ class POSOrdersViewModel(
     private fun printOrderStandard(
         order: PosOrderMasterEntity,
         items: List<PosOrderItemEntity>,
-        role: String
+        role: String,
+
     ) {
         Log.d("PRINT_SOURCE", "🟢 POSOrdersViewModel.printOrderStandard CALLED")
 
@@ -175,7 +176,7 @@ class POSOrdersViewModel(
                         kotNumberText = kotNumberText,
                         stewardName = stewardName,
                         referenceId = referenceId,
-
+                        earnedPoints = 0,
                     )
                 }
 
@@ -187,7 +188,8 @@ class POSOrdersViewModel(
                         outletInfo = outletInfo,
                         kotNumberText = kotNumberText,
                         stewardName = stewardName,
-                        referenceId = referenceId
+                        referenceId = referenceId,
+                        earnedPoints = 0,
                     )
                 }
             }

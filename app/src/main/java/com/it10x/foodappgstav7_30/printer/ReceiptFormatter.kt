@@ -190,7 +190,8 @@ Thank You!
         order: PrintOrder,
         kotNumberText: String="",
         stewardName: String = "",
-        outletInfo: OutletInfo
+        outletInfo: OutletInfo,
+        earnedPoints: Int,
     ): String {
 
         return CountryBillFormatter.billing48(
@@ -198,6 +199,7 @@ Thank You!
             outletInfo = outletInfo,
             kotNumberText = kotNumberText,
             stewardName = stewardName,
+            earnedPoints = earnedPoints,
         )
     }
 

@@ -16,6 +16,7 @@ object IndiaBillFormatter {
         outletInfo: OutletInfo,
         kotNumberText: String,
         stewardName: String,
+        earnedPoints: Int,
     ): String {
 
         val LINE_WIDTH = 48
@@ -48,6 +49,15 @@ object IndiaBillFormatter {
                     )
                 )
             }
+
+          if ((order.loyaltyDiscountPaise ?: 0.0) > 0.0) {
+                append(
+                    totalLine48(
+                        "Loyalty Discount",
+                        order.loyaltyDiscountPaise
+                    )
+                )
+          }
 
             if ((order.discount ?: 0.0) > 0.0) {
                 append(
@@ -89,6 +99,12 @@ object IndiaBillFormatter {
                     order.roundOff
                 )
             )
+        }
+
+        val earnedPointsBlock = buildString {
+            if (earnedPoints > 0) {
+                append("YOU EARNED: $earnedPoints POINTS\n")
+            }
         }
 
         val qrTitleToPrint =
@@ -186,6 +202,7 @@ object IndiaBillFormatter {
                 "$header\n$divider\n$lines"
             }
 
+
         return buildString {
 
             append(ALIGN_CENTER)
@@ -216,12 +233,12 @@ $totalsBlock
 ------------------------------------------------
 ${grandTotalLine48("TOTAL", order.grandTotal)}
 ------------------------------------------------
+$earnedPointsBlock
 ${buildOutletFooter(outletInfo, 48)}
 Thank You!
 """.trimIndent()
             )
         }
-
 
     }
 

@@ -18,6 +18,7 @@ data class PrintQueueEntity(
     @PrimaryKey
     val id: String,
     val referenceId: String?,
+    val earnedPoints: Int?,
     val role: String,
 
     val logoImagePath: String? = null,

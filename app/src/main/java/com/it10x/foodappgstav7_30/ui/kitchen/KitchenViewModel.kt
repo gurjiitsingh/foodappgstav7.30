@@ -397,7 +397,8 @@ class KitchenViewModel(
                                 orderType = orderType,
                                 kotNumber = kotNumber,
                                 referenceId = batchId,
-                                items = printItems
+                                items = printItems,
+                                earnedPoints = 0,
                             )
                         }
 
@@ -410,7 +411,8 @@ class KitchenViewModel(
                                 orderType = orderType,
                                 kotNumber = kotNumber,
                                 referenceId = batchId,
-                                items = printItems
+                                items = printItems,
+                                earnedPoints = 0,
                             )
                         }
                     }

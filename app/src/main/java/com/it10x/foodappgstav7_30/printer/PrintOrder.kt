@@ -41,6 +41,7 @@ data class PrintOrder(
     val tax: Double = 0.0,          // itemTax + deliveryTax
 
     val deliveryFee: Double = 0.0,
+    val loyaltyDiscountPaise: Double = 0.0,
     val discount: Double = 0.0,
 
 // GST information

@@ -65,6 +65,7 @@ val reason: String?="",
     val itemTax: Double = 0.0,
     val taxTotal: Double,           // Total tax
     val discountTotal: Double,      // Manual / item discount
+    val loyaltyDiscountPaise: Double = 0.0,
     val grandTotal: Double,         // Final payable amount
     val roundOff: Double = 0.0,
     val taxableAmount: Double = 0.0,

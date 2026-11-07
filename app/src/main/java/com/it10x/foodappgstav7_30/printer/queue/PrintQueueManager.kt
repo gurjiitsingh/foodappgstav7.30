@@ -79,10 +79,12 @@ class PrintQueueManager private constructor(
         paymentMode: String? = null,
         grandTotal: Double? = null,
         referenceId: String,
+        earnedPoints: Int,
     ) {
         enqueueJob(
             role = role,
             referenceId = referenceId,
+            earnedPoints,
             jobType = "TEXT",
             text = text,
             imagePath = null,
@@ -96,6 +98,7 @@ class PrintQueueManager private constructor(
 
     suspend fun enqueueImage(
         referenceId: String,
+        earnedPoints: Int,
         role: PrinterRole,
         imagePath: String,
         paymentMode: String? = null,
@@ -104,6 +107,7 @@ class PrintQueueManager private constructor(
         enqueueJob(
             role = role,
             referenceId = referenceId,
+            earnedPoints = earnedPoints,
             jobType = "IMAGE",
             text = null,
             imagePath = imagePath,
@@ -116,6 +120,7 @@ class PrintQueueManager private constructor(
     private suspend fun enqueueJob(
         role: PrinterRole,
         referenceId: String,
+        earnedPoints: Int,
         jobType: String,
         text: String? = null,
         // Existing image bill
@@ -154,6 +159,7 @@ class PrintQueueManager private constructor(
             id = UUID.randomUUID().toString(),
 
             referenceId = referenceId,
+            earnedPoints = earnedPoints,
             role = role.name,
 
             jobType = jobType,

@@ -19,9 +19,7 @@ object PrintOrderBuilder {
         items: List<PosOrderItemEntity>,
         outlet: OutletInfo
     ): PrintOrder {
-        Log.d("PRINTTEST", "discount2 = ${master.discountTotal}")
-        Log.d("PRINTTEST", "delivery2 = ${master.deliveryFee}")
-        Log.d("PRINTTEST", "grandTotal2 = ${master.grandTotal}")
+
         val printItems = items.map { item ->
             PrintItem(
                 name = item.name,
@@ -70,6 +68,7 @@ object PrintOrderBuilder {
 
             deliveryFee = master.deliveryFee,
             discount = master.discountTotal,
+            loyaltyDiscountPaise = master.loyaltyDiscountPaise,
             taxableAmount = master.taxableAmount,
             roundOff = master.roundOff,
 // Temporary until we derive it from outlet/item
