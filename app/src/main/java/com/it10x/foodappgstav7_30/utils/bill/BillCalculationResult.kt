@@ -11,7 +11,7 @@ data class BillCalculationResult(
     val totalTaxPaise: Long,
 
     val discountPaise: Long,
-
+    val loyaltyDiscountPaise: Long,
     val deliveryFeePaise: Long,
 
     val deliveryTaxPaise: Long,

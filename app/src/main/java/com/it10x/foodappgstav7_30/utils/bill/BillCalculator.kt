@@ -17,7 +17,8 @@ object BillCalculator {
         discountFlat: Double,
         discountPercent: Double,
         deliveryFee: Double,
-        deliveryTaxPercent: Double
+        deliveryTaxPercent: Double,
+        loyaltyDiscount: Double = 0.0
     ): BillCalculationResult {
 
         // =========================
@@ -87,48 +88,63 @@ val basePrice_modi = item.basePrice + modifierPrice
         }
 
         // =========================
-        // DISCOUNT
-        // =========================
-        val flatPaise =
-            MoneyUtils.toPaise(discountFlat)
+// NORMAL DISCOUNT
+// =========================
+        val flatPaise = MoneyUtils.toPaise(discountFlat)
 
-        // Calculate amount eligible for percentage discount
-        val discountEligibleSubtotalPaise =
-            items.sumOf { item ->
+        val discountEligibleSubtotalPaise = items.sumOf { item ->
+            val modifierPrice =
+                ModifierJsonHelper.fromJson(item.modifiersJson)
+                    .flatMap { it.items }
+                    .sumOf { it.price }
 
-                val modifierPrice =
-                    ModifierJsonHelper.fromJson(item.modifiersJson)
-                        .flatMap { g -> g.items }
-                        .sumOf { m -> m.price }
+            val basePrice_modi = item.basePrice + modifierPrice
 
-
-                val basePrice_modi = item.basePrice + modifierPrice
-                if (item.discountEligible) {
-                    MoneyUtils.toPaise(basePrice_modi) * item.quantity
-                } else {
-                    0L
-                }
+            if (item.discountEligible) {
+                MoneyUtils.toPaise(basePrice_modi) * item.quantity
+            } else {
+                0L
             }
+        }
 
         val percentPaise =
             ((discountEligibleSubtotalPaise * discountPercent) / 100.0)
                 .roundToLong()
 
         val discountPaise =
-            if (flatPaise > 0)
-                flatPaise
-            else
-                percentPaise
+            if (flatPaise > 0) flatPaise else percentPaise
 
         val safeDiscountPaise =
             discountPaise.coerceAtMost(itemSubtotalPaise)
 
+// =========================
+// LOYALTY DISCOUNT
+// =========================
+        val requestedLoyaltyDiscountPaise =
+            MoneyUtils.toPaise(loyaltyDiscount)
+
+        val remainingAfterNormalDiscount =
+            (itemSubtotalPaise - safeDiscountPaise).coerceAtLeast(0L)
+
+        val safeLoyaltyDiscountPaise =
+            requestedLoyaltyDiscountPaise.coerceAtMost(
+                remainingAfterNormalDiscount
+            )
+
+// Combined discount
+        val totalItemDiscountPaise =
+            safeDiscountPaise + safeLoyaltyDiscountPaise
+
+// =========================
+// RECALCULATE TAX AFTER DISCOUNTS
+// =========================
         val discountRatio =
-            if (itemSubtotalPaise == 0L)
+            if (itemSubtotalPaise == 0L) {
                 0.0
-            else
-                safeDiscountPaise.toDouble() /
+            } else {
+                totalItemDiscountPaise.toDouble() /
                         itemSubtotalPaise.toDouble()
+            }
 
         exclusiveTaxPaise =
             (exclusiveTaxPaise * (1 - discountRatio))
@@ -137,6 +153,58 @@ val basePrice_modi = item.basePrice + modifierPrice
         inclusiveTaxPaise =
             (inclusiveTaxPaise * (1 - discountRatio))
                 .roundToLong()
+
+        // =========================
+        // DISCOUNT
+        // =========================
+//        val flatPaise =
+//            MoneyUtils.toPaise(discountFlat)
+//
+//        // Calculate amount eligible for percentage discount
+//        val discountEligibleSubtotalPaise =
+//            items.sumOf { item ->
+//
+//                val modifierPrice =
+//                    ModifierJsonHelper.fromJson(item.modifiersJson)
+//                        .flatMap { g -> g.items }
+//                        .sumOf { m -> m.price }
+//
+//
+//                val basePrice_modi = item.basePrice + modifierPrice
+//                if (item.discountEligible) {
+//                    MoneyUtils.toPaise(basePrice_modi) * item.quantity
+//                } else {
+//                    0L
+//                }
+//            }
+//
+//        val percentPaise =
+//            ((discountEligibleSubtotalPaise * discountPercent) / 100.0)
+//                .roundToLong()
+//
+//        val discountPaise =
+//            if (flatPaise > 0)
+//                flatPaise
+//            else
+//                percentPaise
+//
+//        val safeDiscountPaise =
+//            discountPaise.coerceAtMost(itemSubtotalPaise)
+//
+//        val discountRatio =
+//            if (itemSubtotalPaise == 0L)
+//                0.0
+//            else
+//                safeDiscountPaise.toDouble() /
+//                        itemSubtotalPaise.toDouble()
+//
+//        exclusiveTaxPaise =
+//            (exclusiveTaxPaise * (1 - discountRatio))
+//                .roundToLong()
+//
+//        inclusiveTaxPaise =
+//            (inclusiveTaxPaise * (1 - discountRatio))
+//                .roundToLong()
 
         // =========================
         // DELIVERY
@@ -162,8 +230,13 @@ val basePrice_modi = item.basePrice + modifierPrice
 // =========================
 // Taxable amount after discount,
 // before adding GST.
+        // =========================
+// TAXABLE AMOUNT
+// =========================
         val taxableAmountPaise =
-            itemSubtotalPaise - safeDiscountPaise
+            itemSubtotalPaise - totalItemDiscountPaise
+
+
 
 // =========================
 // GRAND TOTAL
@@ -172,9 +245,19 @@ val basePrice_modi = item.basePrice + modifierPrice
             effectiveTaxType(taxMode, it.taxType).equals("exclusive", ignoreCase = true)
         }
 
+//        val calculatedGrandTotalPaise =
+//            itemSubtotalPaise -
+//                    safeDiscountPaise +
+//                    exclusiveTaxPaise +
+//                    deliveryFeePaise +
+//                    deliveryTaxPaise
+
+
+        // =========================
+// GRAND TOTAL
+// =========================
         val calculatedGrandTotalPaise =
-            itemSubtotalPaise -
-                    safeDiscountPaise +
+            taxableAmountPaise +
                     exclusiveTaxPaise +
                     deliveryFeePaise +
                     deliveryTaxPaise
@@ -207,6 +290,7 @@ val basePrice_modi = item.basePrice + modifierPrice
             deliveryTaxPaise = deliveryTaxPaise,
 
             taxableAmountPaise = taxableAmountPaise,
+            loyaltyDiscountPaise = safeLoyaltyDiscountPaise,
             roundOffPaise = roundOffPaise,
 
             grandTotalPaise = grandTotalPaise

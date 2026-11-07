@@ -143,10 +143,20 @@ class BillViewModel(
     private val _deliveryTaxPercent = MutableStateFlow(0.0)
     private val _discountPercent = MutableStateFlow(0.0)
 
+    // ============================================================
+// LOYALTY REDEMPTION DISCOUNT
+// Stored in paise
+// ============================================================
+    private val _loyaltyDiscountPaise = MutableStateFlow(0L)
+
+    fun setLoyaltyDiscountPaise(value: Long) {
+        _loyaltyDiscountPaise.value = value.coerceAtLeast(0L)
+    }
+
     private val _customerSuggestions = MutableStateFlow<List<PosCustomerEntity>>(emptyList())
     val customerSuggestions: StateFlow<List<PosCustomerEntity>> = _customerSuggestions
 
-
+    private val _redeemPoints = MutableStateFlow(0)
     // ---------------- PAYMENT PROTECTION ----------------
 
 //    private val _event = MutableStateFlow<String?>(null)
@@ -253,6 +263,9 @@ class BillViewModel(
 //        _event.value = null
 //    }
 
+    fun setRedeemPoints(points: Int) {
+        _redeemPoints.value = points.coerceAtLeast(0)
+    }
     fun setFlatDiscount(value: Double) {
         _discountFlat.value = value.coerceAtLeast(0.0)
         _discountPercent.value = 0.0 // reset percent
@@ -346,7 +359,8 @@ class BillViewModel(
 
     private fun observeBill() {
         viewModelScope.launch {
-            combine(
+
+            val billInputs = combine(
                 kotItemDao.getItemsForTable(tableId),
                 _discountFlat,
                 _discountPercent,
@@ -354,7 +368,6 @@ class BillViewModel(
                 _deliveryTaxPercent
             ) { kotItems, flat, percent, deliveryFeeFlow, deliveryTaxPercentFlow ->
 
-                // return all values as one object
                 BillCombine(
                     kotItems,
                     flat,
@@ -362,11 +375,23 @@ class BillViewModel(
                     deliveryFeeFlow,
                     deliveryTaxPercentFlow
                 )
-            }.collectLatest { (kotItems, flat, percent, deliveryFeeFlow, deliveryTaxPercentFlow) ->
+            }
+
+            combine(
+                billInputs,
+                _loyaltyDiscountPaise
+            ) { bill, loyaltyDiscountPaise ->
+
+                Pair(bill, loyaltyDiscountPaise)
+
+            }.collectLatest { (bill, loyaltyDiscountPaise) ->
+
+                val (kotItems, flat, percent, deliveryFeeFlow, deliveryTaxPercentFlow) = bill
+
                 val outlet = outletDao.getOutlet()
-                if (outlet == null) {
-                    return@collectLatest
-                }
+                if (outlet == null) return@collectLatest
+
+                // KEEP THE REST OF YOUR EXISTING observeBill CODE HERE
                 val doneItems = kotItems.filter { it.status == "DONE" }
 
                 val billingItems = doneItems
@@ -432,7 +457,8 @@ class BillViewModel(
                     discountFlat = flat,
                     discountPercent = percent,
                     deliveryFee = deliveryFeeFlow,
-                    deliveryTaxPercent = deliveryTaxPercentFlow  ?: 0.0
+                    deliveryTaxPercent = deliveryTaxPercentFlow  ?: 0.0,
+                    loyaltyDiscount = loyaltyDiscountPaise / 100.0
                 )
 
                 val subtotal = MoneyUtils.fromPaise(calculation.itemSubtotalPaise)
@@ -461,7 +487,8 @@ class BillViewModel(
                         discountFlat = flat,
                         discountPercent = percent,
                         discountApplied = safeDiscount,
-                        total = finalTotal
+                        total = finalTotal,
+                        loyaltyDiscount = MoneyUtils.fromPaise(calculation.loyaltyDiscountPaise),
                     )
                 }
 
@@ -485,7 +512,9 @@ class BillViewModel(
 
         _customerLoyaltyPoints.value = 0
 
+        _loyaltyDiscountPaise.value = 0L
 
+        _redeemPoints.value = 0
         _deliveryAddress.value = null
 
         _uiState.update {
@@ -503,10 +532,6 @@ class BillViewModel(
     }
 
 
-
-    suspend fun hasPendingKitchenItems(): Boolean {
-        return kotItemDao.countKitchenPending(tableId) > 0
-    }
     // --------------------------------------------------------
     // Payment + Order Creation
     // --------------------------------------------------------
@@ -514,25 +539,22 @@ class BillViewModel(
     private val paymentMutex = kotlinx.coroutines.sync.Mutex()
 
 
-
-
-    fun complimentaryOrder(
-        payments: List < PaymentInput >,
+    //  ====================================== SAVE ORDER ======================
+    fun payBill(
+        payments: List<PaymentInput>,
         name: String,
-        phone: String,
-        reason: String,   // DRIVER, FAMILY, FRIEND, STAFF, OTHER
-        note: String ? = null,
+        phone: String
+    ) {
+// UPDATE NEEDED ############################
+//        Move the customer credit update inside the database transaction
+//        Currently, you update currentDue and insert the customer ledger entry before db.withTransaction.
+//        If the bill save fails afterward, the customer could owe money even though no bill was saved.
 
-        ) {
-        Log.d("PAY_DEBUG", "creditPaise BEFORE payment = ${_creditPaise.value}")
         val creditPaiseInput = _creditPaise.value
         val paidModes = setOf("CASH", "CARD", "UPI", "WALLET")
 
-
         val hasPaid = payments.any { it.mode in paidModes }
         val hasUnpaid = payments.any { it.mode in unpaidModes }
-
-
 
         viewModelScope.launch {
 
@@ -543,7 +565,6 @@ class BillViewModel(
             _isProcessing.value = true
 
             val outlet = outletDao.getOutlet()
-
             if (outlet == null) {
 
                 _toastEvent.emit("Outlet not configured")
@@ -556,24 +577,16 @@ class BillViewModel(
             lateinit var fiscalContext: FiscalContext
 
             try {
-
                 val inputPhone = phone.trim()
                 val inputName = name.trim().ifBlank { "Customer" }
-
-                val kotItems = kotItemDao
-                    .getDoneItemsForTableOnce(tableId)
-
-
-                kotItems.forEach {
-                    Log.d(
-                        "CREATED_BY",
-                        "Item=${it.name}, createdById=${it.createdById}, createdByName=${it.createdByName}"
-                    )
-                }
+                val kotItems = kotItemDao.getDoneItemsForTableOnce(tableId)
+                val orderDetailItems =
+                    kotItemDao.getDoneAndDeletedItemsForOrderDetail(tableId)
                 if (kotItems.isEmpty()) {
                     sendEvent("No items to bill")
                     return@launch
                 }
+
 
                 val now = System.currentTimeMillis()
                 val orderDate = SimpleDateFormat(
@@ -587,34 +600,70 @@ class BillViewModel(
                 val orderId = pendingOrderId ?: UUID.randomUUID().toString()
                 pendingOrderId = orderId
 
-//================================
-// BILL CALCULATION
-//================================
+                val mapping = orderSequenceRepository.getOrCreateOrderNo(
+                    mapKey = orderId,
+                    deviceCode = "P1",
+                    financialYear = getFinancialYearCode()
+                )
+
+                val srNo = mapping.srno
+                //================================
+                // BILL CALCULATION
+                //==================================
                 val calculation = BillCalculator.calculate(
                     items = kotItems,
                     taxMode = outlet.taxMode,
                     discountFlat = _discountFlat.value,
                     discountPercent = _discountPercent.value,
                     deliveryFee = _deliveryFee.value,
-                    deliveryTaxPercent = _deliveryTaxPercent.value
+                    deliveryTaxPercent = _deliveryTaxPercent.value,
+                    loyaltyDiscount = _loyaltyDiscountPaise.value / 100.0
                 )
 
                 val itemSubtotalPaise = calculation.itemSubtotalPaise
 
-                val itemTaxPaise =
-                    calculation.exclusiveTaxPaise +
-                            calculation.inclusiveTaxPaise
+                val validationKotItems = kotItemDao
+                    .getDoneItemsForTableOnce(tableId)
 
-                val safeDiscountPaise = calculation.discountPaise
 
+                val validationItemSubtotalPaise = validationKotItems.sumOf { item ->
+
+                    val modifierPrice =
+                        ModifierJsonHelper.fromJson(item.modifiersJson)
+                            .flatMap { group -> group.items }
+                            .sumOf { modifier -> modifier.price }
+
+                    val basePlusModifier =
+                        item.basePrice + modifierPrice
+
+                    MoneyUtils.toPaise(basePlusModifier) * item.quantity
+                }
+
+                val firstTotalQuantity = kotItems.sumOf { it.quantity }
+                val validationTotalQuantity = validationKotItems.sumOf { it.quantity }
+
+                if (
+                    itemSubtotalPaise != validationItemSubtotalPaise ||
+                    firstTotalQuantity != validationTotalQuantity
+                ) {
+                    withContext(Dispatchers.Main) {
+                        sendEvent("Something went wrong. Please try again.")
+                    }
+                    return@launch
+                }
+
+                val safeDiscountPaise = calculation.discountPaise + calculation.loyaltyDiscountPaise
+                val exclusiveTaxPaise = calculation.exclusiveTaxPaise
+                val inclusiveTaxPaise = calculation.inclusiveTaxPaise
+// Total GST on items (used for saving/reporting)
+                val itemTaxPaise = exclusiveTaxPaise + inclusiveTaxPaise
                 val deliveryFeePaise = calculation.deliveryFeePaise
-
                 val deliveryTaxPaise = calculation.deliveryTaxPaise
-
                 val totalTaxPaise = calculation.totalTaxPaise
-
+                val taxableAmountPaise = calculation.taxableAmountPaise
+                val roundOffPaise = calculation.roundOffPaise
                 val grandTotalPaise = calculation.grandTotalPaise
-      //=======================================================================
+
                 // ===========================
                 // PAYMENT CALCULATION
                 // ===========================
@@ -626,22 +675,14 @@ class BillViewModel(
                 val hasCredit = creditPaiseInput > 0
 
                 val paymentStatus = when {
-
                     payments.any { it.mode == "WAITER_PENDING" } -> "WAITER_PENDING"
-
                     payments.any { it.mode == "DELIVERY_PENDING" } -> "DELIVERY_PENDING"
-
                     hasPaid && hasCredit -> "PARTIAL"
-
                     hasCredit -> "CREDIT"
-
                     else -> "PAID"
                 }
-
-
 // 👇 THEN use it
                 val duePaise = creditPaiseInput
-
                 val dueAmount = BigDecimal.valueOf(creditPaiseInput, 2)
                     .setScale(2, java.math.RoundingMode.HALF_UP)
                     .toDouble()
@@ -650,16 +691,17 @@ class BillViewModel(
                 // PHONE VALIDATION
                 // ===========================
 
-                if (paymentStatus in listOf("CREDIT", "PARTIAL") && inputPhone.isBlank()) {
+                if (paymentStatus in listOf("CREDIT", "PARTIAL") && inputPhone.isBlank())
+                {
                     sendEvent("Phone required for credit sale")
                     return@launch
                 }
 
-                // ===========================
-                // ENSURE CUSTOMER EXISTS (IF PHONE ENTERED)
-                // ===========================
+// ===========================
+// ENSURE CUSTOMER EXISTS (IF PHONE ENTERED)
+// ===========================
 
-                var resolvedCustomerId: String?= null
+                var resolvedCustomerId: String? = null
 
                 if (inputPhone.isNotBlank()) {
 
@@ -695,30 +737,19 @@ class BillViewModel(
                 // ===========================
 
                 if (paymentStatus == "CREDIT" || paymentStatus == "PARTIAL") {
-
                     val cleanPhone = inputPhone.trim()
                     resolvedCustomerId = cleanPhone
-
                     val creditToAdd = duePaise / 100.0
-
-                    Log.d("LEDGER_DEBUG", "Running DB block")
-
                     val existingCustomer = customerDao.getCustomerByPhone(cleanPhone)
-
                     if (existingCustomer == null) {
                         Log.e("CREDIT", "❌ Customer NOT FOUND for phone = $cleanPhone")
                         return@launch
                     }
-
-
                     // ✅ FIX: use ID (NOT phone)
                     customerDao.increaseDue(existingCustomer.id, creditToAdd)
-
                     val updatedCustomer = customerDao.getCustomerById(existingCustomer.id)
-
                     val lastBalance = ledgerDao.getLastBalance(existingCustomer.id) ?: 0.0
                     val newBalance = lastBalance + creditToAdd
-
                     val ledgerEntry = PosCustomerLedgerEntity(
                         id = UUID.randomUUID().toString(),
                         ownerId = outlet.ownerId,
@@ -745,6 +776,7 @@ class BillViewModel(
 
                 val finalizedById = PosSessionManager.getUserId(app) ?: ""
                 val finalizedByName = PosSessionManager.getFullName(app) ?: ""
+
                 val stewardName = kotItems
                     .mapNotNull { it.createdByName }
                     .firstOrNull { it.isNotBlank() } ?: "NONAME"
@@ -755,77 +787,56 @@ class BillViewModel(
                 // ===========================
                 // ORDER MASTER
                 // ===========================
-              //  val srNo =  orderSequenceRepository.getOrCreateOrderNo(tableId)
-
-
-                val mapping = orderSequenceRepository.getOrCreateOrderNo(
-                    mapKey = orderId,
-                    deviceCode = "P1",
-                    financialYear = getFinancialYearCode()
-                )
-
-                val srNo = mapping.srno
+//                Log.d(
+//                    "POS_ORDER",
+//                    "INSERT OREDER in billviewmodel orderType=${orderType}, TableName=${tableName} ,TableId=${tableId}"
+//                )
 
                 val orderMaster = PosOrderMasterEntity(
                     id = orderId,
                     srno = srNo,
                     orderType = orderType,
-                    saleType = "COMPLIMENTARY",
-                    reason = reason,
                     tableNo = tableName,
                     customerName = inputName,
                     customerPhone = inputPhone,
                     customerId = resolvedCustomerId,
-
-                    // keeping delivery address untouched
                     dAddressLine1 = deliveryAddress?.line1,
                     dAddressLine2 = deliveryAddress?.line2,
                     dCity = deliveryAddress?.city,
                     dState = deliveryAddress?.state,
                     dZipcode = deliveryAddress?.zipcode,
                     dLandmark = deliveryAddress?.landmark,
-
                     itemTotal = MoneyUtils.fromPaise(itemSubtotalPaise),
-
-                    //taxTotal = MoneyUtils.fromPaise(taxTotalPaise),
-
-                    // deliveryTax = ( _deliveryFee.value * _deliveryTaxPercent.value / 100.0 ),
-                    deliveryFee = 0.0,
-                    deliveryTax = 0.0,
-
-                    itemTax = 0.0,
-                    taxTotal = 0.0,
+                    deliveryFee = _deliveryFee.value,
+                    deliveryTax = MoneyUtils.fromPaise(deliveryTaxPaise),
+                    itemTax = MoneyUtils.fromPaise(itemTaxPaise),
+                    taxTotal = MoneyUtils.fromPaise(totalTaxPaise),
                     discountTotal = MoneyUtils.fromPaise(safeDiscountPaise),
-                    //  grandTotal = grandTotal,
-                    grandTotal = 0.0,
-
-                    paymentMode = "FREE",
-                    paymentStatus = "FREE",
-
-                    paidAmount = 0.0,
-                    dueAmount = 0.0,
-
+                    grandTotal = MoneyUtils.fromPaise(grandTotalPaise),
+                    paymentMode = paymentMode,
+                    paymentStatus = paymentStatus,
+                    paidAmount = MoneyUtils.fromPaise(totalPaidPaise),
+                    dueAmount =dueAmount,
                     orderStatus = "COMPLETED",
-
                     deviceId = "POS",
                     deviceName = "POS",
                     appVersion = "1.0",
-
                     createdById =stewardId,
                     createdByName=stewardName,
-                    finalizedById= finalizedById,
-                    finalizedByName= finalizedByName,
+                    finalizedById=finalizedById,
+                    finalizedByName=finalizedByName,
                     orderDate=orderDate,
                     businessDate = businessDate,
                     createdAt = now,
                     updatedAt = now,
-
-                    syncStatus = "SYNCED",
+                    syncStatus = if (paymentStatus == "WAITER_PENDING") "SYNCED" else "PENDING",
                     lastSyncedAt = null,
-                    notes = note
+                    notes = null
                 )
 
-                val orderItems = kotItems
+
+                //   val orderItems = kotItems
+                val orderItems = orderDetailItems
                     .groupBy {
                         listOf(
                             it.productId,
@@ -835,31 +846,24 @@ class BillViewModel(
                             it.modifiersJson
                         )
                     }
-                    .map {
-                            (_, group) ->
+                    .map { (_, group) ->
+
 
                         val first = group.first()
                         val quantity = group.sumOf { it.quantity }
-
                         val modifierPricePerItem =
                             ModifierJsonHelper.fromJson(first.modifiersJson)
                                 .flatMap { it.items }
                                 .sumOf { it.price }
-                        //   val itemGrossAmount =
-                        //       ((first.basePrice + modifierPricePerItem) * quantity).round(2)
 
-                        //     val basePlusModifier = first.basePrice + modifierPricePerItem
+
 
                         val basePlusModifier = first.basePrice + modifierPricePerItem
-
                         val itemGrossAmount = (basePlusModifier * quantity).round(2)
-
-
                         val taxPerItemPlusModifier =
                             if (first.taxType == "exclusive")
                                 (basePlusModifier * (first.taxRate / 100))
                             else 0.0
-
                         val finalPricePerItemPlusModifier =
                             (basePlusModifier + taxPerItemPlusModifier).round(2)
 
@@ -871,71 +875,357 @@ class BillViewModel(
 
                         val modifierTotal =
                             (modifierPricePerItem * quantity).round(2)
-                        Log.d("BASE_PRICE", "${first.basePrice}")
 
                         PosOrderItemEntity(
                             id = UUID.randomUUID().toString(),
                             // 🔹 SNAPSHOT CATEGORY NAME (enterprise safe)
                             categoryName = first.categoryName,
                             orderMasterId = orderId,
-                            createdById = first.createdById,
-                            createdByName = first.createdByName,
                             productId = first.productId,
                             name = first.name,
                             productMode = first.productMode,
                             currentStock = first.currentStock,
                             categoryId = first.categoryId,
+                            createdById =first.createdById,
+                            createdByName=first.createdByName,
                             parentId = first.parentId,
                             isVariant = first.isVariant,
                             basePrice = first.basePrice,
                             modifierPrice = modifierTotal,
                             quantity = quantity,
-                            itemSubtotal = itemGrossAmount,
+                            itemSubtotal = itemGrossAmount ,
                             // 🔹 Currency snapshot (important for audit)
                             currency = _currencySymbol.value,
                             // 🔹 Payment snapshot (do NOT rely on join later)
-                            status = "FREE",//first.status,
+                            status = first.status,
                             taxRate = first.taxRate,
                             taxType = first.taxType,
                             taxAmountPerItem = taxPerItemPlusModifier,
-                            taxTotal = 0.0,
+                            taxTotal = taxTotalItemPlusModifier,
                             note = first.note,
                             modifiersJson = first.modifiersJson,
-                            finalPricePerItem = 0.0,//finalPricePerItemPlusModifier,
-                            finalTotal = 0.0,//finalPriceTotalItemPlusModifier,
+                            finalPricePerItem = finalPricePerItemPlusModifier,
+                            finalTotal = finalPriceTotalItemPlusModifier,
                             createdAt = now
                         )
                     }
 
+                // =====================================================
+// ORDER ITEM SUBTOTAL VALIDATION
+// =====================================================
 
+                val kotSubtotalPaise = kotItems.sumOf { item ->
+                    MoneyUtils.toPaise(item.basePrice) * item.quantity
+                }
+
+                val orderItemsSubtotalPaise = orderItems.sumOf { item ->
+                    MoneyUtils.toPaise(item.itemSubtotal)
+                }
+
+
+                // val (txId, clientId) = fiskalyRepository.startTransaction()
+                //fiscalService = getFiscalService(outlet.countryName!!, fiskalyRepository)
                 fiscalService = getFiscalService("IN", fiskalyRepository)
                 fiscalContext = withContext(Dispatchers.IO) {
                     fiscalService.start()
                 }
                 withContext(Dispatchers.IO) {
-                    orderMasterDao.insert(orderMaster)
-                    orderProductDao.insertAll(orderItems)
+
+                    db.withTransaction {
+
+                        // ==========================================
+                        // 1. READ CURRENT DONE KOT ITEMS
+                        // ==========================================
+
+                        val currentKotItems = kotItemDao
+                            .getDoneItemsForTableOnce(tableId)
 
 
-                    // UPDATE KOT STATUS PAID
-//                     kotRepository.markHistoryPaid(
-//                         tableNo = tableId,
-//                         orderId = orderId
-//                     )
+                        if (currentKotItems.isEmpty()) {
+                            throw IllegalStateException("No items to bill")
+                        }
 
-                    kotRepository.markHistoryComplimentary(
-                        tableNo = tableId,
-                        orderId = orderId,
-                        reason = reason
-                    )
+                        // ==========================================
+                        // 2. VALIDATE CURRENT KOT DATA
+                        // ==========================================
 
-                    //MANAGE TABLE AFTER ORDER COMPLITE
-                    repository.finalizeTableAfterPayment(
-                        tableNo = tableId,
-                        orderType = orderType
-                    )
+                        val currentItemSubtotalPaise =
+                            currentKotItems.sumOf { item ->
 
-                    if (orderType == "TAKEAWAY" || orderType == "DELIVERY") {
+                                val modifierPrice =
+                                    ModifierJsonHelper.fromJson(item.modifiersJson)
+                                        .flatMap { group -> group.items }
+                                        .sumOf { modifier -> modifier.price }
+
+                                val basePlusModifier =
+                                    item.basePrice + modifierPrice
+
+                                MoneyUtils.toPaise(basePlusModifier) * item.quantity
+                            }
+
+                        val currentTotalQuantity =
+                            currentKotItems.sumOf {
+                                it.quantity
+                            }
+
+                        if (
+                            currentItemSubtotalPaise != itemSubtotalPaise ||
+                            currentTotalQuantity != firstTotalQuantity
+                        ) {
+                            throw IllegalStateException("Bill data changed")
+                        }
+
+                        // ==========================================
+                        // 3. SAVE ORDER MASTER
+                        // ==========================================
+
+                        orderMasterDao.insert(orderMaster)
+
+                        // ==========================================
+                        // 4. VERIFY SAVED ORDER MASTER
+                        // ==========================================
+
+                        val savedOrder =
+                            orderMasterDao.getByIdSync(orderId)
+
+                        if (
+                            savedOrder == null ||
+                            MoneyUtils.toPaise(savedOrder.itemTotal) !=
+                            itemSubtotalPaise
+                        ) {
+                            throw IllegalStateException("Order validation failed")
+                        }
+
+                        // ==========================================
+                        // 5. SAVE ORDER ITEMS
+                        // ==========================================
+
+                        orderProductDao.insertAll(orderItems)
+
+
+                        // ==========================================
+                        // 6. SAVE ACTUAL PAYMENTS ONLY
+                        // ==========================================
+
+                        val actualPayments = payments.filter {
+                            it.mode in paidModes && it.amount > 0
+                        }
+
+                        if (actualPayments.isNotEmpty()) {
+                            val paymentEntities = actualPayments.map {
+                                PosOrderPaymentEntity(
+                                    id = UUID.randomUUID().toString(),
+                                    orderId = orderId,
+                                    ownerId = outlet.ownerId,
+                                    outletId = outlet.outletId,
+                                    amount = MoneyUtils.fromPaise(it.amount),
+                                    mode = it.mode,
+                                    provider = null,
+                                    method = null,
+                                    status = "SUCCESS",
+                                    deviceId = "POS",
+                                    createdAt = now,
+                                    businessDate = businessDate,
+                                    syncStatus = "PENDING"
+                                )
+                            }
+
+                            paymentRepository.insertPayments(paymentEntities)
+                        }
+
+
+// ============================================================
+// LOYALTY POINTS — AWARD ONLY WHEN CUSTOMER PHONE IS PROVIDED
+// ============================================================
+
+
+                        if (
+                            !inputPhone.isBlank() &&
+                            resolvedCustomerId != null &&
+                            _redeemPoints.value > 0
+                        ) {
+                            val program = loyaltyRepository.ensureDefaultProgram(
+                                ownerId = outlet.ownerId,
+                                outletId = outlet.outletId
+                            )
+
+                            if (!program.isActive) {
+                                throw IllegalStateException("Loyalty programme is not active")
+                            }
+
+                            val pointsToRedeem = _redeemPoints.value
+
+                            require(program.redeemPoints > 0) {
+                                "Invalid loyalty redemption configuration"
+                            }
+
+                            val expectedDiscountPaise =
+                                pointsToRedeem.toLong() * program.redeemValueMinor /
+                                        program.redeemPoints.toLong()
+
+                            require(expectedDiscountPaise == calculation.loyaltyDiscountPaise) {
+                                "Loyalty discount and redemption points do not match"
+                            }
+
+                            val account = loyaltyRepository.getOrCreateAccount(
+                                customerId = resolvedCustomerId,
+                                programId = program.id,
+                                outletId = outlet.outletId
+                            )
+
+                            loyaltyRepository.redeemPoints(
+                                accountId = account.id,
+                                points = pointsToRedeem,
+                                idempotencyKey = "ORDER_REDEEM:$orderId",
+                                orderId = orderId,
+                                orderNo = srNo,
+                                outletId = outlet.outletId,
+                                businessDate = businessDate,
+                                createdBy = finalizedById,
+                                description = "Points redeemed on order $srNo"
+                            )
+
+                            Log.d(
+                                "LOYALTY",
+                                "Redeemed $pointsToRedeem points from customer $resolvedCustomerId"
+                            )
+                        }
+
+                        if (!inputPhone.isBlank() && resolvedCustomerId != null) {
+                            val program = loyaltyRepository.ensureDefaultProgram(
+                                ownerId = outlet.ownerId,
+                                outletId = outlet.outletId
+                            )
+
+                            if (program.isActive) {
+
+                                // Food/product amount after discount.
+                                // Tax and delivery fee are excluded.
+//                                val eligibleSpendPaise =
+//                                    (itemSubtotalPaise - safeDiscountPaise).coerceAtLeast(0L)
+//
+//                                // Respect the programme's discounted-bill setting.
+//                                val canEarn = safeDiscountPaise <= 0L ||
+//                                        program.allowEarnOnDiscountedBills
+
+
+// ============================================================
+// EARNING BASIS — ACTUAL AMOUNT AFTER DISCOUNTS
+// ============================================================
+
+// Normal discount follows the programme setting.
+// Loyalty redemption does NOT block earning on the remaining amount.
+
+                                val normalDiscountPaise = calculation.discountPaise
+                                val loyaltyDiscountPaise = calculation.loyaltyDiscountPaise
+
+                                val eligibleSpendPaise = (
+                                        itemSubtotalPaise -
+                                                normalDiscountPaise -
+                                                loyaltyDiscountPaise
+                                        ).coerceAtLeast(0L)
+
+                                val canEarn = normalDiscountPaise <= 0L ||
+                                        program.allowEarnOnDiscountedBills
+
+
+                                val points = if (
+                                    canEarn &&
+                                    eligibleSpendPaise > 0L &&
+                                    program.earnSpendMinor > 0L &&
+                                    program.earnPoints > 0
+                                ) {
+                                    val earningBlocks =
+                                        eligibleSpendPaise / program.earnSpendMinor
+
+                                    val calculatedPoints =
+                                        earningBlocks * program.earnPoints.toLong()
+
+                                    calculatedPoints
+                                        .coerceAtMost(Int.MAX_VALUE.toLong())
+                                        .toInt()
+                                } else {
+                                    0
+                                }
+
+                                if (points > 0) {
+                                    val account = loyaltyRepository.getOrCreateAccount(
+                                        customerId = resolvedCustomerId,
+                                        programId = program.id,
+                                        outletId = outlet.outletId
+                                    )
+
+                                    loyaltyRepository.earnPoints(
+                                        accountId = account.id,
+                                        points = points,
+                                        spendMinor = eligibleSpendPaise,
+                                        idempotencyKey = "ORDER_EARN:$orderId",
+                                        orderId = orderId,
+                                        orderNo = srNo,
+                                        outletId = outlet.outletId,
+                                        businessDate = businessDate,
+                                        createdBy = finalizedById,
+                                        description = "Points earned on order $srNo"
+                                    )
+
+                                    Log.d(
+                                        "LOYALTY",
+                                        "Awarded $points points to customer $resolvedCustomerId"
+                                    )
+                                } else {
+                                    Log.d(
+                                        "LOYALTY",
+                                        "No points awarded. Eligible spend: $eligibleSpendPaise"
+                                    )
+                                }
+                            }
+                        }
+
+
+                        // ==========================================
+                        // 7. UPDATE KOT HISTORY
+                        // ==========================================
+
+                        kotRepository.markHistoryPaid(
+                            tableNo = tableId,
+                            orderId = orderId
+                        )
+
+                        // ==========================================
+                        // 8. FINALIZE TABLE
+                        // ==========================================
+
+                        repository.finalizeTableAfterPayment(
+                            tableNo = tableId,
+                            orderType = orderType
+                        )
+
+                        // ==========================================
+                        // 9. DELETE LOCAL KOT
+                        // ==========================================
+
+                        kotRepository.deleteKotByTable(
+                            tableId
+                        )
+
+                        // ==========================================
+                        // 10. CLEAR ORDER SEQUENCE
+                        // ==========================================
+
+                        orderSequenceRepository.clearOrder(
+                            orderId
+                        )
+                    } // END TRANSACTION
+
+                    // ==============================================
+                    // ROOM TRANSACTION SUCCESSFULLY COMMITTED
+                    // ==============================================
+
+                    if (
+                        orderType == "TAKEAWAY" ||
+                        orderType == "DELIVERY"
+                    ) {
+
                         val nextVirtualTable =
                             virtualTableRepository.markCompleted(
                                 tableId = tableId,
@@ -945,55 +1235,28 @@ class BillViewModel(
 
                         if (nextVirtualTable != null) {
 
-                            Log.d(
-                                "POS_ORDER",
-                                "NEXT TABLE = ${nextVirtualTable.tableName}, id=${nextVirtualTable.id}"
-                            )
-
                             posSessionViewModel.setNextVirtualTable(
                                 tableId = nextVirtualTable.id,
                                 tableName = nextVirtualTable.tableName,
                                 orderType = nextVirtualTable.orderType
                             )
-
-
                         }
                     }
 
+                    // ==============================================
+                    // FIRESTORE
+                    // ==============================================
 
-                    // ✅ 2. PRINT IMMEDIATELY
-                    //  printOrder(orderMaster, orderItems)
+                    tableKotSyncService.clearTableSnapshot(
+                        tableId,
+                        source = "PAYMENT_CLEAR"
+                    )
 
-                    // 🔥 FIRESTORE CLEAR
-                    try {
-
-
-
-                        // 1️⃣ DELETE LOCAL
-                        kotRepository.deleteKotByTable(tableId)
-
-                        //                        val remaining =
-                        //                            kotItemDao.getItemsByTable(tableId).size
-                        //
-                        //                        Log.d(
-                        //                            "TABLE_CLOSE",
-                        //                            "After delete table=$tableId remaining=$remaining"
-                        //        )
-
-                        // 2️⃣ UPDATE FIRESTORE TO EMPTY
-                        tableKotSyncService.clearTableSnapshot(tableId, source = "PAYMENT_CLEAR")
-
-                        // 3️⃣ BACKUP QUEUE
-                        SyncManagerProvider.get().addClearTable(tableId)
-                        orderSequenceRepository.clearOrder(orderId)
-
-
-
-                        Log.d("TABLE_SYNC", "✅ Table cleared after payment")
-                    } catch (e: Exception) {
-                        Log.e("TABLE_SYNC", "❌ Failed to clear table", e)
-                    }
+                    SyncManagerProvider.get()
+                        .addClearTable(tableId)
                 }
+
+
                 //FISKLAY CODE
                 withContext(Dispatchers.IO) {
                     fiscalService.finish(
@@ -1003,24 +1266,31 @@ class BillViewModel(
                     )
                 }
 
-                sendEvent("Complimentary order saved")
+                // ==========================================
+// VERIFY COMMITTED BILL + PAYMENTS
+// ==========================================
 
+
+                sendEvent("Payment successful")
+                pendingOrderId = null
                 resetBillUi()
             } catch (e: Exception) {
 
-                //                if (::fiscalService.isInitialized && ::fiscalContext.isInitialized) {
-                //                    withContext(Dispatchers.IO) {
-                //                        fiscalService.cancel(fiscalContext)
-                //                    }
-                //                }
+//                if (::fiscalService.isInitialized && ::fiscalContext.isInitialized) {
+//                    withContext(Dispatchers.IO) {
+//                        fiscalService.cancel(fiscalContext)
+//                    }
+//                }
 
                 // if (!isFinished) {
                 fiscalService.cancel(fiscalContext)
                 // }
 
+
+
                 Log.e("PAY_ERROR", "Payment failed", e)
                 sendEvent("Payment failed")
-            } finally {
+            }finally {
                 _isProcessing.value = false
                 if (paymentMutex.isLocked) {
                     paymentMutex.unlock()
@@ -1029,9 +1299,6 @@ class BillViewModel(
 
         }
     }
-
-
-
 
     fun printCurrentBill() {
 
@@ -1342,22 +1609,27 @@ class BillViewModel(
     }
 
 
-    //  ====================================== SAVE ORDER ======================
-    fun payBill(
-        payments: List<PaymentInput>,
-        name: String,
-        phone: String
-    ) {
-// UPDATE NEEDED ############################
-//        Move the customer credit update inside the database transaction
-//        Currently, you update currentDue and insert the customer ledger entry before db.withTransaction.
-//        If the bill save fails afterward, the customer could owe money even though no bill was saved.
 
+
+
+
+    fun complimentaryOrder(
+        payments: List < PaymentInput >,
+        name: String,
+        phone: String,
+        reason: String,   // DRIVER, FAMILY, FRIEND, STAFF, OTHER
+        note: String ? = null,
+
+        ) {
+        Log.d("PAY_DEBUG", "creditPaise BEFORE payment = ${_creditPaise.value}")
         val creditPaiseInput = _creditPaise.value
         val paidModes = setOf("CASH", "CARD", "UPI", "WALLET")
 
+
         val hasPaid = payments.any { it.mode in paidModes }
         val hasUnpaid = payments.any { it.mode in unpaidModes }
+
+
 
         viewModelScope.launch {
 
@@ -1368,6 +1640,7 @@ class BillViewModel(
             _isProcessing.value = true
 
             val outlet = outletDao.getOutlet()
+
             if (outlet == null) {
 
                 _toastEvent.emit("Outlet not configured")
@@ -1380,18 +1653,26 @@ class BillViewModel(
             lateinit var fiscalContext: FiscalContext
 
             try {
-            val inputPhone = phone.trim()
-            val inputName = name.trim().ifBlank { "Customer" }
-            val kotItems = kotItemDao.getDoneItemsForTableOnce(tableId)
-                val orderDetailItems =
-                    kotItemDao.getDoneAndDeletedItemsForOrderDetail(tableId)
-            if (kotItems.isEmpty()) {
+
+                val inputPhone = phone.trim()
+                val inputName = name.trim().ifBlank { "Customer" }
+
+                val kotItems = kotItemDao
+                    .getDoneItemsForTableOnce(tableId)
+
+
+                kotItems.forEach {
+                    Log.d(
+                        "CREATED_BY",
+                        "Item=${it.name}, createdById=${it.createdById}, createdByName=${it.createdByName}"
+                    )
+                }
+                if (kotItems.isEmpty()) {
                     sendEvent("No items to bill")
                     return@launch
                 }
 
-
-            val now = System.currentTimeMillis()
+                val now = System.currentTimeMillis()
                 val orderDate = SimpleDateFormat(
                     "yyyy-MM-dd",
                     Locale.getDefault()
@@ -1403,16 +1684,9 @@ class BillViewModel(
                 val orderId = pendingOrderId ?: UUID.randomUUID().toString()
                 pendingOrderId = orderId
 
-                val mapping = orderSequenceRepository.getOrCreateOrderNo(
-                    mapKey = orderId,
-                    deviceCode = "P1",
-                    financialYear = getFinancialYearCode()
-                )
-
-                val srNo = mapping.srno
-                //================================
-                // BILL CALCULATION
-                //==================================
+//================================
+// BILL CALCULATION
+//================================
                 val calculation = BillCalculator.calculate(
                     items = kotItems,
                     taxMode = outlet.taxMode,
@@ -1424,51 +1698,23 @@ class BillViewModel(
 
                 val itemSubtotalPaise = calculation.itemSubtotalPaise
 
-                val validationKotItems = kotItemDao
-                    .getDoneItemsForTableOnce(tableId)
-
-
-                val validationItemSubtotalPaise = validationKotItems.sumOf { item ->
-
-                    val modifierPrice =
-                        ModifierJsonHelper.fromJson(item.modifiersJson)
-                            .flatMap { group -> group.items }
-                            .sumOf { modifier -> modifier.price }
-
-                    val basePlusModifier =
-                        item.basePrice + modifierPrice
-
-                    MoneyUtils.toPaise(basePlusModifier) * item.quantity
-                }
-
-                val firstTotalQuantity = kotItems.sumOf { it.quantity }
-                val validationTotalQuantity = validationKotItems.sumOf { it.quantity }
-
-                if (
-                    itemSubtotalPaise != validationItemSubtotalPaise ||
-                    firstTotalQuantity != validationTotalQuantity
-                ) {
-                    withContext(Dispatchers.Main) {
-                        sendEvent("Something went wrong. Please try again.")
-                    }
-                    return@launch
-                }
+                val itemTaxPaise =
+                    calculation.exclusiveTaxPaise +
+                            calculation.inclusiveTaxPaise
 
                 val safeDiscountPaise = calculation.discountPaise
-                val exclusiveTaxPaise = calculation.exclusiveTaxPaise
-                val inclusiveTaxPaise = calculation.inclusiveTaxPaise
-// Total GST on items (used for saving/reporting)
-                val itemTaxPaise = exclusiveTaxPaise + inclusiveTaxPaise
-                val deliveryFeePaise = calculation.deliveryFeePaise
-                val deliveryTaxPaise = calculation.deliveryTaxPaise
-                val totalTaxPaise = calculation.totalTaxPaise
-                val taxableAmountPaise = calculation.taxableAmountPaise
-                val roundOffPaise = calculation.roundOffPaise
-                val grandTotalPaise = calculation.grandTotalPaise
 
-            // ===========================
-            // PAYMENT CALCULATION
-            // ===========================
+                val deliveryFeePaise = calculation.deliveryFeePaise
+
+                val deliveryTaxPaise = calculation.deliveryTaxPaise
+
+                val totalTaxPaise = calculation.totalTaxPaise
+
+                val grandTotalPaise = calculation.grandTotalPaise
+                //=======================================================================
+                // ===========================
+                // PAYMENT CALCULATION
+                // ===========================
                 val totalPaidPaise = payments
                     .filter { it.mode in paidModes }
                     .sumOf { it.amount }
@@ -1477,81 +1723,99 @@ class BillViewModel(
                 val hasCredit = creditPaiseInput > 0
 
                 val paymentStatus = when {
+
                     payments.any { it.mode == "WAITER_PENDING" } -> "WAITER_PENDING"
+
                     payments.any { it.mode == "DELIVERY_PENDING" } -> "DELIVERY_PENDING"
+
                     hasPaid && hasCredit -> "PARTIAL"
+
                     hasCredit -> "CREDIT"
+
                     else -> "PAID"
                 }
+
+
 // 👇 THEN use it
                 val duePaise = creditPaiseInput
+
                 val dueAmount = BigDecimal.valueOf(creditPaiseInput, 2)
                     .setScale(2, java.math.RoundingMode.HALF_UP)
                     .toDouble()
 
-            // ===========================
-            // PHONE VALIDATION
-            // ===========================
+                // ===========================
+                // PHONE VALIDATION
+                // ===========================
 
-                if (paymentStatus in listOf("CREDIT", "PARTIAL") && inputPhone.isBlank())
-                 {
+                if (paymentStatus in listOf("CREDIT", "PARTIAL") && inputPhone.isBlank()) {
                     sendEvent("Phone required for credit sale")
                     return@launch
                 }
 
-// ===========================
-// ENSURE CUSTOMER EXISTS (IF PHONE ENTERED)
-// ===========================
+                // ===========================
+                // ENSURE CUSTOMER EXISTS (IF PHONE ENTERED)
+                // ===========================
 
-            var resolvedCustomerId: String? = null
+                var resolvedCustomerId: String?= null
 
-            if (inputPhone.isNotBlank()) {
+                if (inputPhone.isNotBlank()) {
 
-                resolvedCustomerId = inputPhone
+                    resolvedCustomerId = inputPhone
 
-                val existingCustomer = customerDao.getCustomerByPhone(inputPhone)
+                    val existingCustomer = customerDao.getCustomerByPhone(inputPhone)
 
-                if (existingCustomer == null) {
+                    if (existingCustomer == null) {
 
-                    val customer = PosCustomerEntity(
-                        id = inputPhone,
-                        ownerId = outlet.ownerId,
-                        outletId = outlet.outletId,
-                        name = inputName,
-                        phone = inputPhone,
-                        addressLine1 = null,
-                        addressLine2 = null,
-                        city = null,
-                        state = null,
-                        zipcode = null,
-                        landmark = null,
-                        creditLimit = 0.0,
-                        currentDue = 0.0,   // 🔥 important
-                        createdAt = now,
-                        updatedAt = null
-                    )
+                        val customer = PosCustomerEntity(
+                            id = inputPhone,
+                            ownerId = outlet.ownerId,
+                            outletId = outlet.outletId,
+                            name = inputName,
+                            phone = inputPhone,
+                            addressLine1 = null,
+                            addressLine2 = null,
+                            city = null,
+                            state = null,
+                            zipcode = null,
+                            landmark = null,
+                            creditLimit = 0.0,
+                            currentDue = 0.0,   // 🔥 important
+                            createdAt = now,
+                            updatedAt = null
+                        )
 
-                    customerDao.insert(customer)
+                        customerDao.insert(customer)
+                    }
                 }
-            }
-            // ===========================
-            // CUSTOMER CREDIT HANDLING
-            // ===========================
+                // ===========================
+                // CUSTOMER CREDIT HANDLING
+                // ===========================
 
                 if (paymentStatus == "CREDIT" || paymentStatus == "PARTIAL") {
+
                     val cleanPhone = inputPhone.trim()
                     resolvedCustomerId = cleanPhone
+
                     val creditToAdd = duePaise / 100.0
+
+                    Log.d("LEDGER_DEBUG", "Running DB block")
+
                     val existingCustomer = customerDao.getCustomerByPhone(cleanPhone)
+
                     if (existingCustomer == null) {
                         Log.e("CREDIT", "❌ Customer NOT FOUND for phone = $cleanPhone")
                         return@launch
                     }
+
+
                     // ✅ FIX: use ID (NOT phone)
                     customerDao.increaseDue(existingCustomer.id, creditToAdd)
+
                     val updatedCustomer = customerDao.getCustomerById(existingCustomer.id)
+
                     val lastBalance = ledgerDao.getLastBalance(existingCustomer.id) ?: 0.0
                     val newBalance = lastBalance + creditToAdd
+
                     val ledgerEntry = PosCustomerLedgerEntity(
                         id = UUID.randomUUID().toString(),
                         ownerId = outlet.ownerId,
@@ -1572,13 +1836,12 @@ class BillViewModel(
 
                 }
 
-            val paymentMode =
-                if (payments.size > 1) "MIXED"
-                else payments.firstOrNull()?.mode ?: "CREDIT"
+                val paymentMode =
+                    if (payments.size > 1) "MIXED"
+                    else payments.firstOrNull()?.mode ?: "CREDIT"
 
                 val finalizedById = PosSessionManager.getUserId(app) ?: ""
                 val finalizedByName = PosSessionManager.getFullName(app) ?: ""
-
                 val stewardName = kotItems
                     .mapNotNull { it.createdByName }
                     .firstOrNull { it.isNotBlank() } ?: "NONAME"
@@ -1586,59 +1849,80 @@ class BillViewModel(
                 val stewardId = kotItems
                     .mapNotNull { it.createdById }
                     .firstOrNull { it.isNotBlank() } ?: ""
-            // ===========================
-            // ORDER MASTER
-            // ===========================
-//                Log.d(
-//                    "POS_ORDER",
-//                    "INSERT OREDER in billviewmodel orderType=${orderType}, TableName=${tableName} ,TableId=${tableId}"
-//                )
-
-            val orderMaster = PosOrderMasterEntity(
-                id = orderId,
-                srno = srNo,
-                orderType = orderType,
-                tableNo = tableName,
-                customerName = inputName,
-                customerPhone = inputPhone,
-                customerId = resolvedCustomerId,
-                dAddressLine1 = deliveryAddress?.line1,
-                dAddressLine2 = deliveryAddress?.line2,
-                dCity = deliveryAddress?.city,
-                dState = deliveryAddress?.state,
-                dZipcode = deliveryAddress?.zipcode,
-                dLandmark = deliveryAddress?.landmark,
-                itemTotal = MoneyUtils.fromPaise(itemSubtotalPaise),
-                deliveryFee = _deliveryFee.value,
-                deliveryTax = MoneyUtils.fromPaise(deliveryTaxPaise),
-                itemTax = MoneyUtils.fromPaise(itemTaxPaise),
-                taxTotal = MoneyUtils.fromPaise(totalTaxPaise),
-                discountTotal = MoneyUtils.fromPaise(safeDiscountPaise),
-                grandTotal = MoneyUtils.fromPaise(grandTotalPaise),
-                paymentMode = paymentMode,
-                paymentStatus = paymentStatus,
-                paidAmount = MoneyUtils.fromPaise(totalPaidPaise),
-                dueAmount =dueAmount,
-                orderStatus = "COMPLETED",
-                deviceId = "POS",
-                deviceName = "POS",
-                appVersion = "1.0",
-                createdById =stewardId,
-                createdByName=stewardName,
-                finalizedById=finalizedById,
-                finalizedByName=finalizedByName,
-                orderDate=orderDate,
-                businessDate = businessDate,
-                createdAt = now,
-                updatedAt = now,
-                syncStatus = if (paymentStatus == "WAITER_PENDING") "SYNCED" else "PENDING",
-                lastSyncedAt = null,
-                notes = null
-            )
+                // ===========================
+                // ORDER MASTER
+                // ===========================
+                //  val srNo =  orderSequenceRepository.getOrCreateOrderNo(tableId)
 
 
-             //   val orderItems = kotItems
-                val orderItems = orderDetailItems
+                val mapping = orderSequenceRepository.getOrCreateOrderNo(
+                    mapKey = orderId,
+                    deviceCode = "P1",
+                    financialYear = getFinancialYearCode()
+                )
+
+                val srNo = mapping.srno
+
+                val orderMaster = PosOrderMasterEntity(
+                    id = orderId,
+                    srno = srNo,
+                    orderType = orderType,
+                    saleType = "COMPLIMENTARY",
+                    reason = reason,
+                    tableNo = tableName,
+                    customerName = inputName,
+                    customerPhone = inputPhone,
+                    customerId = resolvedCustomerId,
+
+                    // keeping delivery address untouched
+                    dAddressLine1 = deliveryAddress?.line1,
+                    dAddressLine2 = deliveryAddress?.line2,
+                    dCity = deliveryAddress?.city,
+                    dState = deliveryAddress?.state,
+                    dZipcode = deliveryAddress?.zipcode,
+                    dLandmark = deliveryAddress?.landmark,
+
+                    itemTotal = MoneyUtils.fromPaise(itemSubtotalPaise),
+
+                    //taxTotal = MoneyUtils.fromPaise(taxTotalPaise),
+
+                    // deliveryTax = ( _deliveryFee.value * _deliveryTaxPercent.value / 100.0 ),
+                    deliveryFee = 0.0,
+                    deliveryTax = 0.0,
+
+                    itemTax = 0.0,
+                    taxTotal = 0.0,
+                    discountTotal = MoneyUtils.fromPaise(safeDiscountPaise),
+                    //  grandTotal = grandTotal,
+                    grandTotal = 0.0,
+
+                    paymentMode = "FREE",
+                    paymentStatus = "FREE",
+
+                    paidAmount = 0.0,
+                    dueAmount = 0.0,
+
+                    orderStatus = "COMPLETED",
+
+                    deviceId = "POS",
+                    deviceName = "POS",
+                    appVersion = "1.0",
+
+                    createdById =stewardId,
+                    createdByName=stewardName,
+                    finalizedById= finalizedById,
+                    finalizedByName= finalizedByName,
+                    orderDate=orderDate,
+                    businessDate = businessDate,
+                    createdAt = now,
+                    updatedAt = now,
+
+                    syncStatus = "SYNCED",
+                    lastSyncedAt = null,
+                    notes = note
+                )
+
+                val orderItems = kotItems
                     .groupBy {
                         listOf(
                             it.productId,
@@ -1648,24 +1932,31 @@ class BillViewModel(
                             it.modifiersJson
                         )
                     }
-                    .map { (_, group) ->
-
+                    .map {
+                            (_, group) ->
 
                         val first = group.first()
                         val quantity = group.sumOf { it.quantity }
+
                         val modifierPricePerItem =
                             ModifierJsonHelper.fromJson(first.modifiersJson)
                                 .flatMap { it.items }
                                 .sumOf { it.price }
+                        //   val itemGrossAmount =
+                        //       ((first.basePrice + modifierPricePerItem) * quantity).round(2)
 
-
+                        //     val basePlusModifier = first.basePrice + modifierPricePerItem
 
                         val basePlusModifier = first.basePrice + modifierPricePerItem
+
                         val itemGrossAmount = (basePlusModifier * quantity).round(2)
+
+
                         val taxPerItemPlusModifier =
                             if (first.taxType == "exclusive")
                                 (basePlusModifier * (first.taxRate / 100))
                             else 0.0
+
                         val finalPricePerItemPlusModifier =
                             (basePlusModifier + taxPerItemPlusModifier).round(2)
 
@@ -1677,333 +1968,71 @@ class BillViewModel(
 
                         val modifierTotal =
                             (modifierPricePerItem * quantity).round(2)
+                        Log.d("BASE_PRICE", "${first.basePrice}")
 
-//                        val isDeleted = first.status == "DELETED"
-//
-//                        val basePlusModifier = first.basePrice + modifierPricePerItem
-//
-//                        val itemGrossAmount =
-//                            if (isDeleted) {
-//                                0.0
-//                            } else {
-//                                (basePlusModifier * quantity).round(2)
-//                            }
-//
-//                        val taxPerItemPlusModifier =
-//                            if (isDeleted) {
-//                                0.0
-//                            } else if (first.taxType == "exclusive") {
-//                                (basePlusModifier * (first.taxRate / 100))
-//                            } else {
-//                                0.0
-//                            }
-//
-//                        val finalPricePerItemPlusModifier =
-//                            if (isDeleted) {
-//                                0.0
-//                            } else {
-//                                (basePlusModifier + taxPerItemPlusModifier).round(2)
-//                            }
-//
-//                        val finalPriceTotalItemPlusModifier =
-//                            if (isDeleted) {
-//                                0.0
-//                            } else {
-//                                (finalPricePerItemPlusModifier * quantity).round(2)
-//                            }
-//
-//                        val taxTotalItemPlusModifier =
-//                            if (isDeleted) {
-//                                0.0
-//                            } else {
-//                                (taxPerItemPlusModifier * quantity).round(2)
-//                            }
-//
-//                        val modifierTotal =
-//                            if (isDeleted) {
-//                                0.0
-//                            } else {
-//                                (modifierPricePerItem * quantity).round(2)
-//                            }
-
-                         PosOrderItemEntity(
+                        PosOrderItemEntity(
                             id = UUID.randomUUID().toString(),
                             // 🔹 SNAPSHOT CATEGORY NAME (enterprise safe)
                             categoryName = first.categoryName,
                             orderMasterId = orderId,
+                            createdById = first.createdById,
+                            createdByName = first.createdByName,
                             productId = first.productId,
                             name = first.name,
-                             productMode = first.productMode,
-                             currentStock = first.currentStock,
+                            productMode = first.productMode,
+                            currentStock = first.currentStock,
                             categoryId = first.categoryId,
-                             createdById =first.createdById,
-                             createdByName=first.createdByName,
                             parentId = first.parentId,
                             isVariant = first.isVariant,
                             basePrice = first.basePrice,
                             modifierPrice = modifierTotal,
                             quantity = quantity,
-                            itemSubtotal = itemGrossAmount ,
+                            itemSubtotal = itemGrossAmount,
                             // 🔹 Currency snapshot (important for audit)
                             currency = _currencySymbol.value,
                             // 🔹 Payment snapshot (do NOT rely on join later)
-                            status = first.status,
+                            status = "FREE",//first.status,
                             taxRate = first.taxRate,
                             taxType = first.taxType,
                             taxAmountPerItem = taxPerItemPlusModifier,
-                            taxTotal = taxTotalItemPlusModifier,
+                            taxTotal = 0.0,
                             note = first.note,
                             modifiersJson = first.modifiersJson,
-                            finalPricePerItem = finalPricePerItemPlusModifier,
-                            finalTotal = finalPriceTotalItemPlusModifier,
+                            finalPricePerItem = 0.0,//finalPricePerItemPlusModifier,
+                            finalTotal = 0.0,//finalPriceTotalItemPlusModifier,
                             createdAt = now
                         )
                     }
 
-                // =====================================================
-// ORDER ITEM SUBTOTAL VALIDATION
-// =====================================================
 
-                val kotSubtotalPaise = kotItems.sumOf { item ->
-                    MoneyUtils.toPaise(item.basePrice) * item.quantity
-                }
-
-                val orderItemsSubtotalPaise = orderItems.sumOf { item ->
-                    MoneyUtils.toPaise(item.itemSubtotal)
-                }
-
-
-               // val (txId, clientId) = fiskalyRepository.startTransaction()
-                //fiscalService = getFiscalService(outlet.countryName!!, fiskalyRepository)
                 fiscalService = getFiscalService("IN", fiskalyRepository)
                 fiscalContext = withContext(Dispatchers.IO) {
                     fiscalService.start()
                 }
                 withContext(Dispatchers.IO) {
-
-                    db.withTransaction {
-
-                        // ==========================================
-                        // 1. READ CURRENT DONE KOT ITEMS
-                        // ==========================================
-
-                        val currentKotItems = kotItemDao
-                            .getDoneItemsForTableOnce(tableId)
+                    orderMasterDao.insert(orderMaster)
+                    orderProductDao.insertAll(orderItems)
 
 
-                        if (currentKotItems.isEmpty()) {
-                            throw IllegalStateException("No items to bill")
-                        }
+                    // UPDATE KOT STATUS PAID
+//                     kotRepository.markHistoryPaid(
+//                         tableNo = tableId,
+//                         orderId = orderId
+//                     )
 
-                        // ==========================================
-                        // 2. VALIDATE CURRENT KOT DATA
-                        // ==========================================
+                    kotRepository.markHistoryComplimentary(
+                        tableNo = tableId,
+                        orderId = orderId,
+                        reason = reason
+                    )
 
-                        val currentItemSubtotalPaise =
-                            currentKotItems.sumOf { item ->
+                    //MANAGE TABLE AFTER ORDER COMPLITE
+                    repository.finalizeTableAfterPayment(
+                        tableNo = tableId,
+                        orderType = orderType
+                    )
 
-                                val modifierPrice =
-                                    ModifierJsonHelper.fromJson(item.modifiersJson)
-                                        .flatMap { group -> group.items }
-                                        .sumOf { modifier -> modifier.price }
-
-                                val basePlusModifier =
-                                    item.basePrice + modifierPrice
-
-                                MoneyUtils.toPaise(basePlusModifier) * item.quantity
-                            }
-
-                        val currentTotalQuantity =
-                            currentKotItems.sumOf {
-                                it.quantity
-                            }
-
-                        if (
-                            currentItemSubtotalPaise != itemSubtotalPaise ||
-                            currentTotalQuantity != firstTotalQuantity
-                        ) {
-                            throw IllegalStateException("Bill data changed")
-                        }
-
-                        // ==========================================
-                        // 3. SAVE ORDER MASTER
-                        // ==========================================
-
-                        orderMasterDao.insert(orderMaster)
-
-                        // ==========================================
-                        // 4. VERIFY SAVED ORDER MASTER
-                        // ==========================================
-
-                        val savedOrder =
-                            orderMasterDao.getByIdSync(orderId)
-
-                        if (
-                            savedOrder == null ||
-                            MoneyUtils.toPaise(savedOrder.itemTotal) !=
-                            itemSubtotalPaise
-                        ) {
-                            throw IllegalStateException("Order validation failed")
-                        }
-
-                        // ==========================================
-                        // 5. SAVE ORDER ITEMS
-                        // ==========================================
-
-                        orderProductDao.insertAll(orderItems)
-
-
-                        // ==========================================
-                        // 6. SAVE ACTUAL PAYMENTS ONLY
-                        // ==========================================
-
-                        val actualPayments = payments.filter {
-                            it.mode in paidModes && it.amount > 0
-                        }
-
-                        if (actualPayments.isNotEmpty()) {
-                            val paymentEntities = actualPayments.map {
-                                PosOrderPaymentEntity(
-                                    id = UUID.randomUUID().toString(),
-                                    orderId = orderId,
-                                    ownerId = outlet.ownerId,
-                                    outletId = outlet.outletId,
-                                    amount = MoneyUtils.fromPaise(it.amount),
-                                    mode = it.mode,
-                                    provider = null,
-                                    method = null,
-                                    status = "SUCCESS",
-                                    deviceId = "POS",
-                                    createdAt = now,
-                                    businessDate = businessDate,
-                                    syncStatus = "PENDING"
-                                )
-                            }
-
-                            paymentRepository.insertPayments(paymentEntities)
-                        }
-
-                        // ==========================================
-                        // 6. SAVE PAYMENTS OLD NOT USED
-                        // ==========================================
-// ============================================================
-// LOYALTY POINTS — AWARD ONLY WHEN CUSTOMER PHONE IS PROVIDED
-// ============================================================
-
-                        if (!inputPhone.isBlank() && resolvedCustomerId != null) {
-                            val program = loyaltyRepository.ensureDefaultProgram(
-                                ownerId = outlet.ownerId,
-                                outletId = outlet.outletId
-                            )
-
-                            if (program.isActive) {
-
-                                // Food/product amount after discount.
-                                // Tax and delivery fee are excluded.
-                                val eligibleSpendPaise =
-                                    (itemSubtotalPaise - safeDiscountPaise).coerceAtLeast(0L)
-
-                                // Respect the programme's discounted-bill setting.
-                                val canEarn = safeDiscountPaise <= 0L ||
-                                        program.allowEarnOnDiscountedBills
-
-                                val points = if (
-                                    canEarn &&
-                                    eligibleSpendPaise > 0L &&
-                                    program.earnSpendMinor > 0L &&
-                                    program.earnPoints > 0
-                                ) {
-                                    val earningBlocks =
-                                        eligibleSpendPaise / program.earnSpendMinor
-
-                                    val calculatedPoints =
-                                        earningBlocks * program.earnPoints.toLong()
-
-                                    calculatedPoints
-                                        .coerceAtMost(Int.MAX_VALUE.toLong())
-                                        .toInt()
-                                } else {
-                                    0
-                                }
-
-                                if (points > 0) {
-                                    val account = loyaltyRepository.getOrCreateAccount(
-                                        customerId = resolvedCustomerId,
-                                        programId = program.id,
-                                        outletId = outlet.outletId
-                                    )
-
-                                    loyaltyRepository.earnPoints(
-                                        accountId = account.id,
-                                        points = points,
-                                        spendMinor = eligibleSpendPaise,
-                                        idempotencyKey = "ORDER_EARN:$orderId",
-                                        orderId = orderId,
-                                        orderNo = srNo,
-                                        outletId = outlet.outletId,
-                                        businessDate = businessDate,
-                                        createdBy = finalizedById,
-                                        description = "Points earned on order $srNo"
-                                    )
-
-                                    Log.d(
-                                        "LOYALTY",
-                                        "Awarded $points points to customer $resolvedCustomerId"
-                                    )
-                                } else {
-                                    Log.d(
-                                        "LOYALTY",
-                                        "No points awarded. Eligible spend: $eligibleSpendPaise"
-                                    )
-                                }
-                            }
-                        }
-
-
-                        // ==========================================
-                        // 7. UPDATE KOT HISTORY
-                        // ==========================================
-
-                        kotRepository.markHistoryPaid(
-                            tableNo = tableId,
-                            orderId = orderId
-                        )
-
-                        // ==========================================
-                        // 8. FINALIZE TABLE
-                        // ==========================================
-
-                        repository.finalizeTableAfterPayment(
-                            tableNo = tableId,
-                            orderType = orderType
-                        )
-
-                        // ==========================================
-                        // 9. DELETE LOCAL KOT
-                        // ==========================================
-
-                        kotRepository.deleteKotByTable(
-                            tableId
-                        )
-
-                        // ==========================================
-                        // 10. CLEAR ORDER SEQUENCE
-                        // ==========================================
-
-                        orderSequenceRepository.clearOrder(
-                            orderId
-                        )
-                    } // END TRANSACTION
-
-                    // ==============================================
-                    // ROOM TRANSACTION SUCCESSFULLY COMMITTED
-                    // ==============================================
-
-                    if (
-                        orderType == "TAKEAWAY" ||
-                        orderType == "DELIVERY"
-                    ) {
-
+                    if (orderType == "TAKEAWAY" || orderType == "DELIVERY") {
                         val nextVirtualTable =
                             virtualTableRepository.markCompleted(
                                 tableId = tableId,
@@ -2013,28 +2042,55 @@ class BillViewModel(
 
                         if (nextVirtualTable != null) {
 
+                            Log.d(
+                                "POS_ORDER",
+                                "NEXT TABLE = ${nextVirtualTable.tableName}, id=${nextVirtualTable.id}"
+                            )
+
                             posSessionViewModel.setNextVirtualTable(
                                 tableId = nextVirtualTable.id,
                                 tableName = nextVirtualTable.tableName,
                                 orderType = nextVirtualTable.orderType
                             )
+
+
                         }
                     }
 
-                    // ==============================================
-                    // FIRESTORE
-                    // ==============================================
 
-                    tableKotSyncService.clearTableSnapshot(
-                        tableId,
-                        source = "PAYMENT_CLEAR"
-                    )
+                    // ✅ 2. PRINT IMMEDIATELY
+                    //  printOrder(orderMaster, orderItems)
 
-                    SyncManagerProvider.get()
-                        .addClearTable(tableId)
+                    // 🔥 FIRESTORE CLEAR
+                    try {
+
+
+
+                        // 1️⃣ DELETE LOCAL
+                        kotRepository.deleteKotByTable(tableId)
+
+                        //                        val remaining =
+                        //                            kotItemDao.getItemsByTable(tableId).size
+                        //
+                        //                        Log.d(
+                        //                            "TABLE_CLOSE",
+                        //                            "After delete table=$tableId remaining=$remaining"
+                        //        )
+
+                        // 2️⃣ UPDATE FIRESTORE TO EMPTY
+                        tableKotSyncService.clearTableSnapshot(tableId, source = "PAYMENT_CLEAR")
+
+                        // 3️⃣ BACKUP QUEUE
+                        SyncManagerProvider.get().addClearTable(tableId)
+                        orderSequenceRepository.clearOrder(orderId)
+
+
+
+                        Log.d("TABLE_SYNC", "✅ Table cleared after payment")
+                    } catch (e: Exception) {
+                        Log.e("TABLE_SYNC", "❌ Failed to clear table", e)
+                    }
                 }
-
-
                 //FISKLAY CODE
                 withContext(Dispatchers.IO) {
                     fiscalService.finish(
@@ -2044,51 +2100,24 @@ class BillViewModel(
                     )
                 }
 
-                // ==========================================
-// VERIFY COMMITTED BILL + PAYMENTS
-// ==========================================
+                sendEvent("Complimentary order saved")
 
-//                val savedOrder = orderMasterDao.getByIdSync(orderId)
-//                val savedPayments = paymentRepository.getPaymentsByOrderId(orderId)
-//                val savedPaidTotal = paymentRepository.getTotalPaid(orderId)
-//
-//                Log.d(
-//                    "POS_PAYMENT_DEBUG",
-//                    """
-//    ========== COMMITTED BILL VERIFICATION ==========
-//    orderId=$orderId
-//    masterFound=${savedOrder != null}
-//    paymentCount=${savedPayments.size}
-//    paymentTotal=$savedPaidTotal
-//    paymentMode=${savedOrder?.paymentMode}
-//    paymentStatus=${savedOrder?.paymentStatus}
-//    grandTotal=${savedOrder?.grandTotal}
-//    paidAmount=${savedOrder?.paidAmount}
-//    dueAmount=${savedOrder?.dueAmount}
-//    ================================================
-//    """.trimIndent()
-//                )
-
-                sendEvent("Payment successful")
-                pendingOrderId = null
                 resetBillUi()
             } catch (e: Exception) {
 
-//                if (::fiscalService.isInitialized && ::fiscalContext.isInitialized) {
-//                    withContext(Dispatchers.IO) {
-//                        fiscalService.cancel(fiscalContext)
-//                    }
-//                }
+                //                if (::fiscalService.isInitialized && ::fiscalContext.isInitialized) {
+                //                    withContext(Dispatchers.IO) {
+                //                        fiscalService.cancel(fiscalContext)
+                //                    }
+                //                }
 
-               // if (!isFinished) {
-                    fiscalService.cancel(fiscalContext)
-               // }
-
-
+                // if (!isFinished) {
+                fiscalService.cancel(fiscalContext)
+                // }
 
                 Log.e("PAY_ERROR", "Payment failed", e)
                 sendEvent("Payment failed")
-            }finally {
+            } finally {
                 _isProcessing.value = false
                 if (paymentMutex.isLocked) {
                     paymentMutex.unlock()
@@ -2097,6 +2126,7 @@ class BillViewModel(
 
         }
     }
+
 
 
 

@@ -63,6 +63,43 @@ fun BillDialog(
     val discountFlat = remember { mutableStateOf("") }
     val discountPercent = remember { mutableStateOf("") }
     val creditAmount = remember { mutableStateOf("") }
+    // Loyalty redemption input
+    var redeemPointsInput by remember { mutableStateOf("") }
+
+    val redeemPointsValue = redeemPointsInput.toLongOrNull() ?: 0L
+
+// Default conversion: 100 points = ₹1.00
+    val redeemDiscountPaise = redeemPointsValue
+
+    val billViewModel: BillViewModel = viewModel(
+
+        key = "BillVM_${sessionId}_${orderType}",
+        factory = BillViewModelFactory(
+            application = (LocalContext.current.applicationContext as? Application)
+                ?: throw IllegalStateException("Application not found"),
+            tableId = tableId ?: orderType,
+            tableName = selectedTableName,
+            orderType = orderType,
+            posSessionViewModel = posSessionViewModel
+        )
+    )
+
+    LaunchedEffect(redeemDiscountPaise) {
+        billViewModel.setLoyaltyDiscountPaise(redeemDiscountPaise)
+    }
+
+    LaunchedEffect(redeemPointsValue) {
+        billViewModel.setRedeemPoints(
+            redeemPointsValue.coerceAtMost(Int.MAX_VALUE.toLong()).toInt()
+        )
+    }
+
+    val redeemDiscountText = String.format(
+        java.util.Locale("en", "IN"),
+        "₹%.2f",
+        redeemDiscountPaise / 100.0
+    )
+
     var showRemainingOptions by remember { mutableStateOf(false) }
     var showDiscount by remember { mutableStateOf(false) }
     var showDelivery by remember { mutableStateOf(false) }
@@ -85,18 +122,7 @@ fun BillDialog(
     var pendingDeleteItemId by remember { mutableStateOf<String?>(null) }
 
 
-    val billViewModel: BillViewModel = viewModel(
 
-        key = "BillVM_${sessionId}_${orderType}",
-        factory = BillViewModelFactory(
-            application = (LocalContext.current.applicationContext as? Application)
-                ?: throw IllegalStateException("Application not found"),
-            tableId = tableId ?: orderType,
-            tableName = selectedTableName,
-            orderType = orderType,
-            posSessionViewModel = posSessionViewModel
-        )
-    )
 
     LaunchedEffect(Unit) {
         billViewModel.toastEvent.collect { message ->
@@ -522,7 +548,8 @@ fun BillDialog(
                             modifier = Modifier.fillMaxWidth(),
                             horizontalArrangement = Arrangement.spacedBy(8.dp),
                             verticalAlignment = Alignment.CenterVertically
-                        ) {
+                        )
+                        {
 
                             // Customer Phone
                             Box(
@@ -583,6 +610,82 @@ fun BillDialog(
                                     .heightIn(min = 56.dp)
                             )
                         }
+
+                        // =====================================================
+// LOYALTY POINT REDEMPTION
+// =====================================================
+
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(top = 6.dp),
+                            horizontalArrangement = Arrangement.spacedBy(8.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        )
+                        {
+
+                            // Redeem Points Input
+                            // Redeem Points Input
+                            Box(
+                                modifier = Modifier
+                                    .weight(0.50f)
+                                    .clickable {
+                                        activeInput = "REDEEM_POINTS"
+                                    }
+                            ) {
+                                OutlinedTextField(
+                                    value = redeemPointsInput,
+                                    onValueChange = {},
+                                    readOnly = true,
+                                    enabled = false,
+                                    label = { Text("Redeem Points") },
+                                    singleLine = true,
+                                    textStyle = LocalTextStyle.current.copy(
+                                        fontSize = 15.sp,
+                                        fontWeight = FontWeight.Bold
+                                    ),
+                                    colors = OutlinedTextFieldDefaults.colors(
+                                        disabledContainerColor = if (activeInput == "REDEEM_POINTS")
+                                            PosTheme.bill.inputActiveBg
+                                        else
+                                            PosTheme.bill.inputBg,
+                                        disabledBorderColor = if (activeInput == "REDEEM_POINTS")
+                                            PosTheme.bill.inputActiveBorder
+                                        else
+                                            PosTheme.bill.inputBorder,
+                                        disabledTextColor = PosTheme.bill.billText,
+                                        disabledLabelColor = PosTheme.bill.billText.copy(alpha = 0.7f)
+                                    ),
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .heightIn(min = 56.dp)
+                                )
+                            }
+
+                            // Redemption Discount Display
+                            OutlinedTextField(
+                                value = redeemDiscountText,
+                                onValueChange = {},
+                                readOnly = true,
+                                enabled = false,
+                                label = { Text("Discount") },
+                                singleLine = true,
+                                textStyle = LocalTextStyle.current.copy(
+                                    fontSize = 15.sp,
+                                    fontWeight = FontWeight.Bold
+                                ),
+                                colors = OutlinedTextFieldDefaults.colors(
+                                    disabledContainerColor = PosTheme.bill.inputBg,
+                                    disabledBorderColor = PosTheme.bill.inputBorder,
+                                    disabledTextColor = PosTheme.bill.success,
+                                    disabledLabelColor = PosTheme.bill.billText.copy(alpha = 0.7f)
+                                ),
+                                modifier = Modifier
+                                    .weight(0.50f)
+                                    .heightIn(min = 56.dp)
+                            )
+                        }
+
                     if (suggestions.value.isNotEmpty() && activeInput == "PHONE") {
 
                         Card(
@@ -1304,6 +1407,8 @@ fun BillDialog(
                             deliveryFee = deliveryFee,
                             receivedAmount = receivedAmount,
                             setReceivedAmount = { receivedAmount = it },
+                            redeemPointsInput = redeemPointsInput,
+                            setRedeemPointsInput = { redeemPointsInput = it },
                             billViewModel = billViewModel,
                             isPrinted = isPrinted
                         )
@@ -1547,6 +1652,8 @@ fun handleInput(
     deliveryFee: MutableState<String>,
     receivedAmount: String,
     setReceivedAmount: (String) -> Unit,
+    redeemPointsInput: String,
+    setRedeemPointsInput: (String) -> Unit,
     billViewModel: BillViewModel,
     isPrinted: Boolean   // ✅ NEW PARAM
 )
@@ -1664,6 +1771,23 @@ fun handleInput(
                     label = label
                 )
             )
+        }
+
+
+        "REDEEM_POINTS" -> {
+            when (label) {
+                "←" -> {
+                    setRedeemPointsInput(redeemPointsInput.dropLast(1))
+                }
+
+                "." -> {
+                    // Ignore decimal input for whole-number points.
+                }
+
+                else -> {
+                    setRedeemPointsInput(redeemPointsInput + label)
+                }
+            }
         }
     }
 }

@@ -24,6 +24,8 @@ import com.it10x.foodappgstav7_30.ui.payment.PaymentInput
 import com.it10x.foodappgstav7_30.ui.pos.PosSessionViewModel
 
 import android.widget.Toast
+import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.ui.text.input.KeyboardType
 
 import androidx.compose.ui.text.style.TextAlign
 
@@ -43,6 +45,7 @@ fun BillDialogPhone(
     currencyCode: String,
     selectedTableName: String,
     posSessionViewModel: PosSessionViewModel,
+
 ) {
 
     if (!showBill || sessionId == null) return
@@ -60,6 +63,8 @@ fun BillDialogPhone(
     val discountFlat = remember { mutableStateOf("") }
     val discountPercent = remember { mutableStateOf("") }
     val creditAmount = remember { mutableStateOf("") }
+    // Loyalty redemption input
+    var redeemPointsInput by remember { mutableStateOf("") }
     val deliveryFee = remember { mutableStateOf("") }
 
     var showDiscount by remember { mutableStateOf(false) }
@@ -118,6 +123,8 @@ fun BillDialogPhone(
 
     val uiState by billViewModel.uiState.collectAsState()
 
+    val customerLoyaltyPoints by
+    billViewModel.customerLoyaltyPoints.collectAsState()
     val suggestions by billViewModel.customerSuggestions.collectAsState()
 
     val remainingPaise by billViewModel.remainingPaise.collectAsState()
@@ -436,70 +443,140 @@ fun BillDialogPhone(
                         modifier = Modifier.height(8.dp)
                     )
 
-                    // =================================================
-                    // CUSTOMER PHONE
-                    // =================================================
 
+                    // =====================================================
+// CUSTOMER PHONE + LOYALTY POINTS
+// =====================================================
 
-
-                Box(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .clickable {
-                            activeInput = "PHONE"
-                        }
-                )
-                {
-
-                    OutlinedTextField(
-
-                        value =
-                            uiState.customerPhone,
-
-                        onValueChange = {},
-
-                        label = {
-                            Text("Customer Phone")
-                        },
-
-                        enabled = false,
-
-                        readOnly = true,
-
-                        singleLine = true,
-
-                        colors =
-                            OutlinedTextFieldDefaults.colors(
-
-                                disabledContainerColor =
-                                    if (activeInput == "PHONE")
-                                        PosTheme.bill.inputActiveBg
-                                    else
-                                        PosTheme.bill.inputBg,
-
-                                disabledBorderColor =
-                                    if (activeInput == "PHONE")
-                                        PosTheme.bill.inputActiveBorder
-                                    else
-                                        PosTheme.bill.inputBorder,
-
-                                disabledTextColor =
-                                    PosTheme.bill.billText,
-
-                                disabledLabelColor =
-                                    PosTheme.bill.billText
-                                        .copy(alpha = 0.7f)
-                            ),
-
-                        textStyle =
-                            LocalTextStyle.current.copy(
-                                fontSize = 15.sp
-                            ),
-
-                        modifier =
-                            Modifier.fillMaxWidth()
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                        verticalAlignment = Alignment.CenterVertically
                     )
-                }
+                    {
+
+                        // Customer Phone
+                        Box(
+                            modifier = Modifier
+                                .weight(0.40f)
+                                .clickable { activeInput = "PHONE" }
+                        ) {
+                            OutlinedTextField(
+                                value = uiState.customerPhone,
+                                onValueChange = {},
+                                label = { Text("Customer Phone") },
+                                enabled = false,
+                                readOnly = true,
+                                singleLine = true,
+                                colors = OutlinedTextFieldDefaults.colors(
+                                    disabledContainerColor =
+                                        if (activeInput == "PHONE")
+                                            PosTheme.bill.inputActiveBg
+                                        else
+                                            PosTheme.bill.inputBg,
+                                    disabledBorderColor =
+                                        if (activeInput == "PHONE")
+                                            PosTheme.bill.inputActiveBorder
+                                        else
+                                            PosTheme.bill.inputBorder,
+                                    disabledTextColor = PosTheme.bill.billText,
+                                    disabledLabelColor =
+                                        PosTheme.bill.billText.copy(alpha = 0.7f)
+                                ),
+                                textStyle = LocalTextStyle.current.copy(fontSize = 15.sp),
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .heightIn(min = 56.dp)
+                            )
+                        }
+
+                        // Loyalty Points
+                        OutlinedTextField(
+                            value = "$customerLoyaltyPoints Points",
+                            onValueChange = {},
+                            readOnly = true,
+                            enabled = false,
+                            label = { Text("Loyalty Points") },
+                            singleLine = true,
+                            colors = OutlinedTextFieldDefaults.colors(
+                                disabledContainerColor = PosTheme.bill.inputBg,
+                                disabledBorderColor = PosTheme.bill.inputBorder,
+                                disabledTextColor = PosTheme.bill.success,
+                                disabledLabelColor =
+                                    PosTheme.bill.billText.copy(alpha = 0.7f)
+                            ),
+                            textStyle = LocalTextStyle.current.copy(
+                                fontSize = 15.sp,
+                                fontWeight = FontWeight.Bold
+                            ),
+                            modifier = Modifier
+                                .weight(0.60f)
+                                .heightIn(min = 56.dp)
+                        )
+                    }
+
+                    // =====================================================
+// LOYALTY POINT REDEMPTION
+// =====================================================
+
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(top = 6.dp),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    )
+                    {
+
+                        // Redeem Points Input
+                        OutlinedTextField(
+                            value = redeemPointsInput,
+                            onValueChange = { value ->
+                                redeemPointsInput = value.filter { it.isDigit() }
+                            },
+                            label = { Text("Redeem Points") },
+                            singleLine = true,
+                            keyboardOptions = KeyboardOptions(
+                                keyboardType = KeyboardType.Number
+                            ),
+                            textStyle = LocalTextStyle.current.copy(
+                                fontSize = 15.sp,
+                                fontWeight = FontWeight.Bold
+                            ),
+                            colors = OutlinedTextFieldDefaults.colors(
+                                focusedContainerColor = PosTheme.bill.inputActiveBg,
+                                unfocusedContainerColor = PosTheme.bill.inputBg,
+                                focusedBorderColor = PosTheme.bill.inputActiveBorder,
+                                unfocusedBorderColor = PosTheme.bill.inputBorder
+                            ),
+                            modifier = Modifier
+                                .weight(0.50f)
+                                .heightIn(min = 56.dp)
+                        )
+
+                        // Redemption Discount Display
+                        OutlinedTextField(
+                            value = "₹0.00",
+                            onValueChange = {},
+                            readOnly = true,
+                            enabled = false,
+                            label = { Text("Discount") },
+                            singleLine = true,
+                            textStyle = LocalTextStyle.current.copy(
+                                fontSize = 15.sp,
+                                fontWeight = FontWeight.Bold
+                            ),
+                            colors = OutlinedTextFieldDefaults.colors(
+                                disabledContainerColor = PosTheme.bill.inputBg,
+                                disabledBorderColor = PosTheme.bill.inputBorder,
+                                disabledTextColor = PosTheme.bill.success,
+                                disabledLabelColor = PosTheme.bill.billText.copy(alpha = 0.7f)
+                            ),
+                            modifier = Modifier
+                                .weight(0.50f)
+                                .heightIn(min = 56.dp)
+                        )
+                    }
 
                 // =================================================
                 // CUSTOMER SUGGESTIONS
@@ -1412,6 +1489,8 @@ fun BillDialogPhone(
 
                     receivedAmount = receivedAmount,
                     setReceivedAmount = { receivedAmount = it },
+                    redeemPointsInput = redeemPointsInput,
+                    setRedeemPointsInput = { redeemPointsInput = it },
                     billViewModel =
                         billViewModel,
 

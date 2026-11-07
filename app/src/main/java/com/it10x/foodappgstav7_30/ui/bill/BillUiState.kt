@@ -11,5 +11,9 @@ data class BillUiState(
     val discountPercent: Double = 0.0,
     val discountApplied: Double = 0.0, // final computed
     val total: Double = 0.0,
-    val customerPhone: String = ""
+    val customerPhone: String = "",
+
+    val loyaltyRedeemPoints: Int = 0,
+    val loyaltyDiscountPaise: Long = 0L,
+    val loyaltyDiscount: Double = 0.0,
 )

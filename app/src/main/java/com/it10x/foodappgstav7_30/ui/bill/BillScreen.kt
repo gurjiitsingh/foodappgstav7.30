@@ -243,8 +243,20 @@ fun BillScreen(
             localeTag = localeTag
         )
         if (state.discountApplied > 0) {
-            BillRow("Discount", -state.discountApplied,  currencyCode = currencyCode,
-                localeTag = localeTag)
+             BillRow(
+                "Discount",
+                -state.discountApplied,
+                currencyCode = currencyCode,
+                localeTag = localeTag
+            )
+        }
+        if (state.loyaltyDiscount > 0) {
+            BillRow(
+                label = "Loyalty Points Discount",
+                value = -state.loyaltyDiscount,
+                currencyCode = currencyCode,
+                localeTag = localeTag
+            )
         }
         BillRow("Tax", state.tax,  currencyCode = currencyCode,
             localeTag = localeTag)
