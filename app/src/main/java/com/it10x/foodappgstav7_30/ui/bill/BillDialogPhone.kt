@@ -65,6 +65,12 @@ fun BillDialogPhone(
     val creditAmount = remember { mutableStateOf("") }
     // Loyalty redemption input
     var redeemPointsInput by remember { mutableStateOf("") }
+
+    val redeemPointsValue = redeemPointsInput.toLongOrNull() ?: 0L
+
+// Default conversion: 100 points = ₹1.00
+    val redeemDiscountPaise = redeemPointsValue
+
     val deliveryFee = remember { mutableStateOf("") }
 
     var showDiscount by remember { mutableStateOf(false) }
@@ -80,6 +86,8 @@ fun BillDialogPhone(
     var isPrinted by remember { mutableStateOf(false) }
     var isCreditSelected by remember { mutableStateOf(false) }
     var receivedAmount by remember { mutableStateOf("") }
+
+
     // =========================================================
     // BILL VIEW MODEL
     // =========================================================
@@ -117,6 +125,12 @@ fun BillDialogPhone(
         }
     }
 
+    val redeemDiscountText = String.format(
+        java.util.Locale("en", "IN"),
+        "₹%.2f",
+        redeemDiscountPaise / 100.0
+    )
+
     // =========================================================
     // UI STATE
     // =========================================================
@@ -125,6 +139,10 @@ fun BillDialogPhone(
 
     val customerLoyaltyPoints by
     billViewModel.customerLoyaltyPoints.collectAsState()
+
+    val allowDiscountPoints by
+    billViewModel.allowPointsOnDiscountedBill.collectAsState()
+
     val suggestions by billViewModel.customerSuggestions.collectAsState()
 
     val remainingPaise by billViewModel.remainingPaise.collectAsState()
@@ -490,6 +508,38 @@ fun BillDialogPhone(
                             )
                         }
 
+
+
+
+                        // Allow / Disallow Points Button
+                        Button(
+                            onClick = {
+                                billViewModel.setAllowPointsOnDiscountedBill(
+                                    !allowDiscountPoints
+                                )
+                            },
+                            modifier = Modifier
+                                .height(42.dp)
+                                .weight(0.22f),
+                            contentPadding = PaddingValues(
+                                horizontal = 4.dp,
+                                vertical = 0.dp
+                            ),
+                            colors = ButtonDefaults.buttonColors(
+                                containerColor = if (allowDiscountPoints)
+                                    PosTheme.bill.success
+                                else
+                                    PosTheme.bill.warning,
+                                contentColor = Color.White
+                            )
+                        ) {
+                            Text(
+                                text = if (allowDiscountPoints) "Earn ON" else "Earn OFF",
+                                fontSize = 11.sp,
+                                maxLines = 1
+                            )
+                        }
+
                         // Loyalty Points
                         OutlinedTextField(
                             value = "$customerLoyaltyPoints Points",
@@ -510,7 +560,7 @@ fun BillDialogPhone(
                                 fontWeight = FontWeight.Bold
                             ),
                             modifier = Modifier
-                                .weight(0.60f)
+                                .weight(0.38f)
                                 .heightIn(min = 56.dp)
                         )
                     }
@@ -529,34 +579,46 @@ fun BillDialogPhone(
                     {
 
                         // Redeem Points Input
-                        OutlinedTextField(
-                            value = redeemPointsInput,
-                            onValueChange = { value ->
-                                redeemPointsInput = value.filter { it.isDigit() }
-                            },
-                            label = { Text("Redeem Points") },
-                            singleLine = true,
-                            keyboardOptions = KeyboardOptions(
-                                keyboardType = KeyboardType.Number
-                            ),
-                            textStyle = LocalTextStyle.current.copy(
-                                fontSize = 15.sp,
-                                fontWeight = FontWeight.Bold
-                            ),
-                            colors = OutlinedTextFieldDefaults.colors(
-                                focusedContainerColor = PosTheme.bill.inputActiveBg,
-                                unfocusedContainerColor = PosTheme.bill.inputBg,
-                                focusedBorderColor = PosTheme.bill.inputActiveBorder,
-                                unfocusedBorderColor = PosTheme.bill.inputBorder
-                            ),
+                        // Redeem Points Input
+                        Box(
                             modifier = Modifier
                                 .weight(0.50f)
-                                .heightIn(min = 56.dp)
-                        )
+                                .clickable {
+                                    activeInput = "REDEEM_POINTS"
+                                }
+                        ) {
+                            OutlinedTextField(
+                                value = redeemPointsInput,
+                                onValueChange = {},
+                                readOnly = true,
+                                enabled = false,
+                                label = { Text("Redeem Points") },
+                                singleLine = true,
+                                textStyle = LocalTextStyle.current.copy(
+                                    fontSize = 15.sp,
+                                    fontWeight = FontWeight.Bold
+                                ),
+                                colors = OutlinedTextFieldDefaults.colors(
+                                    disabledContainerColor = if (activeInput == "REDEEM_POINTS")
+                                        PosTheme.bill.inputActiveBg
+                                    else
+                                        PosTheme.bill.inputBg,
+                                    disabledBorderColor = if (activeInput == "REDEEM_POINTS")
+                                        PosTheme.bill.inputActiveBorder
+                                    else
+                                        PosTheme.bill.inputBorder,
+                                    disabledTextColor = PosTheme.bill.billText,
+                                    disabledLabelColor = PosTheme.bill.billText.copy(alpha = 0.7f)
+                                ),
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .heightIn(min = 56.dp)
+                            )
+                        }
 
                         // Redemption Discount Display
                         OutlinedTextField(
-                            value = "₹0.00",
+                            value = redeemDiscountText,
                             onValueChange = {},
                             readOnly = true,
                             enabled = false,

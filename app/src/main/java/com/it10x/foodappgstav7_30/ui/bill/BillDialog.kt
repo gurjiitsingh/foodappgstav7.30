@@ -139,6 +139,9 @@ fun BillDialog(
     val customerLoyaltyPoints by
     billViewModel.customerLoyaltyPoints.collectAsState()
 
+    val allowDiscountPoints by
+    billViewModel.allowPointsOnDiscountedBill.collectAsState()
+
     var hasLoadedItems by remember { mutableStateOf(false) }
     var showMoreOptions by remember { mutableStateOf(false) }
     var showComplimentaryReasons by remember {
@@ -586,6 +589,38 @@ fun BillDialog(
                                 )
                             }
 
+
+
+
+                            // Allow / Disallow Points Button
+                            Button(
+                                onClick = {
+                                    billViewModel.setAllowPointsOnDiscountedBill(
+                                        !allowDiscountPoints
+                                    )
+                                },
+                                modifier = Modifier
+                                    .height(42.dp)
+                                    .weight(0.22f),
+                                contentPadding = PaddingValues(
+                                    horizontal = 4.dp,
+                                    vertical = 0.dp
+                                ),
+                                colors = ButtonDefaults.buttonColors(
+                                    containerColor = if (allowDiscountPoints)
+                                        PosTheme.bill.success
+                                    else
+                                        PosTheme.bill.warning,
+                                    contentColor = Color.White
+                                )
+                            ) {
+                                Text(
+                                    text = if (allowDiscountPoints) "Earn ON" else "Earn OFF",
+                                    fontSize = 11.sp,
+                                    maxLines = 1
+                                )
+                            }
+
                             // Loyalty Points
                             OutlinedTextField(
                                 value = "$customerLoyaltyPoints Points",
@@ -606,7 +641,7 @@ fun BillDialog(
                                     fontWeight = FontWeight.Bold
                                 ),
                                 modifier = Modifier
-                                    .weight(0.60f)
+                                    .weight(0.38f)
                                     .heightIn(min = 56.dp)
                             )
                         }

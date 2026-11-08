@@ -192,10 +192,14 @@ class VirtualTableViewModel(
             val nextNumber =
                 (counterDao.getLastNumber(type) ?: 0) + 1
 
+            val existingCounter = counterDao.get(type)
+
             counterDao.upsert(
                 VirtualTableCounterEntity(
                     orderType = type,
-                    lastNumber = nextNumber
+                    lastNumber = nextNumber,
+                    status = existingCounter?.status ?: "NEW",
+                    resetDate = existingCounter?.resetDate ?: getTodayDate()
                 )
             )
 
@@ -254,10 +258,14 @@ class VirtualTableViewModel(
             val nextNumber =
                 (counterDao.getLastNumber(type) ?: 0) + 1
 
+            val existingCounter = counterDao.get(type)
+
             counterDao.upsert(
                 VirtualTableCounterEntity(
                     orderType = type,
-                    lastNumber = nextNumber
+                    lastNumber = nextNumber,
+                    status = existingCounter?.status ?: "NEW",
+                    resetDate = existingCounter?.resetDate ?: getTodayDate()
                 )
             )
 

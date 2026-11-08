@@ -36,6 +36,7 @@ import androidx.compose.foundation.border
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Category
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.DeliveryDining
@@ -151,6 +152,10 @@ fun FastFoodPosScreen(
 
     val virtualTables by virtualTableViewModel.tables.collectAsState()
 
+    var selectedNewOrderType by rememberSaveable {
+        mutableStateOf("TAKEAWAY")
+    }
+
     LaunchedEffect(Unit) {
 
         // Same action as clicking TAKEAWAY button
@@ -173,6 +178,7 @@ fun FastFoodPosScreen(
             "AUTO TAKEAWAY selected: ${newTable.tableName}, id=${newTable.id}"
         )
     }
+
 
 // --------------------------------------------------
 // SELECTED TABLE NAME
@@ -453,52 +459,10 @@ fun FastFoodPosScreen(
 
                         // -------- ORDER TYPE ICON BUTTONS PHONE--------
 
-                        // 🍽️ Dine In (Table)
-//                        if (posType == "RESTAU" || posType == "FAST_FOOD") {
-//                            IconButton(
-//                                onClick = {
-//                                    orderType = "DINE_IN"
-//                                    showTableSelector = true
-//                                },
-//                                modifier = Modifier
-//                                    .size(commonHeight)
-//                                    .background(
-//                                        if (orderType == "DINE_IN") MaterialTheme.colorScheme.primary
-//                                        else MaterialTheme.colorScheme.surfaceVariant,
-//                                        shape = commonShape
-//                                    )
-//                            ) {
-//                                Icon(
-//                                    imageVector = Icons.Default.Restaurant,
-//                                    contentDescription = "Dine In",
-//                                    tint = if (orderType == "DINE_IN")
-//                                        MaterialTheme.colorScheme.onPrimary
-//                                    else
-//                                        MaterialTheme.colorScheme.onSurfaceVariant
-//                                )
-//                            }
-//
-//                        }
                         // 🛍️ Takeaway icon
                         IconButton(
                             onClick = {
-
-                                orderType = "TAKEAWAY"
-
-                                scope.launch {
-
-                                    val newTable =
-                                        virtualTableViewModel.createNew(
-                                            "TAKEAWAY"
-                                        )
-
-                                    posSessionViewModel.setTable(
-                                        tableId = newTable.id,
-                                        tableName = newTable.tableName,
-                                        orderType = "TAKEAWAY"
-                                    )
-                                }
-
+                                selectedNewOrderType = "TAKEAWAY"
                             },
                             modifier = Modifier
                                 .size(commonHeight)
@@ -524,23 +488,7 @@ fun FastFoodPosScreen(
                         // 🚚 Delivery icon
                         IconButton(
                             onClick = {
-
-                                orderType = "DELIVERY"
-
-                                scope.launch {
-
-                                    val newTable =
-                                        virtualTableViewModel.createNew(
-                                            "DELIVERY"
-                                        )
-
-                                    posSessionViewModel.setTable(
-                                        tableId = newTable.id,
-                                        tableName = newTable.tableName,
-                                        orderType = "DELIVERY"
-                                    )
-                                }
-
+                                selectedNewOrderType = "DELIVERY"
                             },
                             modifier = Modifier
                                 .size(commonHeight)
@@ -729,61 +677,18 @@ fun FastFoodPosScreen(
 
                         val borderColor = Color(0xFFE2E8F0)
 
-                        // ================= DINE IN =================
-                        //                        if (posType == "RESTAU" || posType == "FAST_FOOD") {
-//                            IconButton(
-//                                onClick = {
-//                                    orderType = "DINE_IN"
-//                                    showTableSelector = true
-//                                },
-//                                modifier = Modifier
-//                                    .size(commonHeight)
-//                                    .background(
-//                                        if (orderType == "DINE_IN") MaterialTheme.colorScheme.primary
-//                                        else MaterialTheme.colorScheme.surfaceVariant,
-//                                        shape = commonShape
-//                                    )
-//                            ) {
-//                                Icon(
-//                                    imageVector = Icons.Default.Restaurant,
-//                                    contentDescription = "Dine In",
-//                                    tint = if (orderType == "DINE_IN")
-//                                        MaterialTheme.colorScheme.onPrimary
-//                                    else
-//                                        MaterialTheme.colorScheme.onSurfaceVariant
-//                                )
-//                            }
-//
-//                        }
 
                         // ================= TAKEAWAY =================
+
+
                         IconButton(
                             onClick = {
-                                scope.launch {
-
-                                    val newTable =
-                                        virtualTableViewModel.createNew(
-                                            type = "TAKEAWAY"
-                                        )
-
-                                    orderType = "TAKEAWAY"
-
-                                    posSessionViewModel.setTable(
-                                        tableId = newTable.id,
-                                        tableName = newTable.tableName,
-                                        orderType = "TAKEAWAY",
-                                    )
-
-                                    Log.d(
-                                        "POS_ORDER",
-                                        "TAKEAWAY selected: ${newTable.tableName}"
-                                    )
-                                }
+                                selectedNewOrderType = "TAKEAWAY"
                             },
                             modifier = Modifier
                                 .size(commonHeight)
                                 .background(
-                                    color = if (orderType == "TAKEAWAY")
+                                    color = if (selectedNewOrderType == "TAKEAWAY")
                                         selectedBg
                                     else
                                         unselectedBg,
@@ -791,7 +696,7 @@ fun FastFoodPosScreen(
                                 )
                                 .border(
                                     1.dp,
-                                    if (orderType == "TAKEAWAY")
+                                    if (selectedNewOrderType == "TAKEAWAY")
                                         selectedBg
                                     else
                                         borderColor,
@@ -801,7 +706,7 @@ fun FastFoodPosScreen(
                             Icon(
                                 imageVector = Icons.Default.ShoppingBag,
                                 contentDescription = "Takeaway",
-                                tint = if (orderType == "TAKEAWAY")
+                                tint = if (selectedNewOrderType == "TAKEAWAY")
                                     selectedContent
                                 else
                                     unselectedContent
@@ -812,31 +717,12 @@ fun FastFoodPosScreen(
 // ================= DELIVERY =================
                         IconButton(
                             onClick = {
-                                scope.launch {
-
-                                    val newTable =
-                                        virtualTableViewModel.createNew(
-                                            type = "DELIVERY"
-                                        )
-
-                                    orderType = "DELIVERY"
-
-                                    posSessionViewModel.setTable(
-                                        tableId = newTable.id,
-                                        tableName = newTable.tableName,
-                                        orderType = "DELIVERY",
-                                    )
-
-                                    Log.d(
-                                        "POS_ORDER",
-                                        "shown in tab : ${newTable.tableName}"
-                                    )
-                                }
+                                selectedNewOrderType = "DELIVERY"
                             },
                             modifier = Modifier
                                 .size(commonHeight)
                                 .background(
-                                    color = if (orderType == "DELIVERY")
+                                    color = if (selectedNewOrderType == "DELIVERY")
                                         selectedBg
                                     else
                                         unselectedBg,
@@ -844,7 +730,7 @@ fun FastFoodPosScreen(
                                 )
                                 .border(
                                     1.dp,
-                                    if (orderType == "DELIVERY")
+                                    if (selectedNewOrderType == "DELIVERY")
                                         selectedBg
                                     else
                                         borderColor,
@@ -854,14 +740,46 @@ fun FastFoodPosScreen(
                             Icon(
                                 imageVector = Icons.Default.LocalShipping,
                                 contentDescription = "Delivery",
-                                tint = if (orderType == "DELIVERY")
+                                tint = if (selectedNewOrderType == "DELIVERY")
                                     selectedContent
                                 else
                                     unselectedContent
                             )
                         }
 
+                        // -------- NEW ORDER BUTTON --------
+                        IconButton(
+                            onClick = {
+                                scope.launch {
+                                    val type = selectedNewOrderType
 
+                                    val newTable = virtualTableViewModel.createNew(type)
+
+                                    posSessionViewModel.setTable(
+                                        tableId = newTable.id,
+                                        tableName = newTable.tableName,
+                                        orderType = type
+                                    )
+
+                                    Log.d(
+                                        "POS_ORDER",
+                                        "NEW ORDER: $type, ${newTable.id}"
+                                    )
+                                }
+                            },
+                            modifier = Modifier
+                                .size(commonHeight)
+                                .background(
+                                    Color(0xFF2E7D32),
+                                    shape = commonShape
+                                )
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.Add,
+                                contentDescription = "New Order",
+                                tint = Color.White
+                            )
+                        }
 
                         // ================= SEARCH + ACTIONS =================
                         Row(

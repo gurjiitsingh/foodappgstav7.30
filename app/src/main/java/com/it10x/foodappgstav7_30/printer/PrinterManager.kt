@@ -254,7 +254,10 @@ class PrinterManager private constructor(
         referenceId: String,
         earnedPoints: Int = 0,
         ) {
-
+        Log.d(
+            "TEXT_PRINT",
+            "earnedPoints value = $earnedPoints"
+        )
         // --------------------------------------------------
         // TEXT PRINTER SIZE
         //

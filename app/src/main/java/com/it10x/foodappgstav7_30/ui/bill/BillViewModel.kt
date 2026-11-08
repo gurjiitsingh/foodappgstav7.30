@@ -124,6 +124,8 @@ class BillViewModel(
         initializeInvoiceCounter()
 
     }
+
+
     private val _toastEvent = MutableSharedFlow<String>()
     val toastEvent = _toastEvent.asSharedFlow()
     private var pendingOrderId: String? = null
@@ -157,6 +159,21 @@ class BillViewModel(
     val customerSuggestions: StateFlow<List<PosCustomerEntity>> = _customerSuggestions
 
     private val _redeemPoints = MutableStateFlow(0)
+
+    // ============================================================
+// CASHIER CONTROL — EARN POINTS ON DISCOUNTED BILLS
+// ============================================================
+
+    private val _allowPointsOnDiscountedBill =
+        MutableStateFlow(true)
+
+    val allowPointsOnDiscountedBill: StateFlow<Boolean> =
+        _allowPointsOnDiscountedBill
+
+    fun setAllowPointsOnDiscountedBill(allow: Boolean) {
+        _allowPointsOnDiscountedBill.value = allow
+    }
+
     // ---------------- PAYMENT PROTECTION ----------------
 
 //    private val _event = MutableStateFlow<String?>(null)
@@ -189,6 +206,7 @@ class BillViewModel(
 
     private val _customerLoyaltyPoints = MutableStateFlow(0)
     val customerLoyaltyPoints: StateFlow<Int> = _customerLoyaltyPoints
+
 
     fun setCreditAmountRaw(input: String) {
         val clean = input.trim()
@@ -515,6 +533,7 @@ class BillViewModel(
         _loyaltyDiscountPaise.value = 0L
 
         _redeemPoints.value = 0
+        _allowPointsOnDiscountedBill.value = true
         _deliveryAddress.value = null
 
         _uiState.update {
@@ -1127,9 +1146,9 @@ class BillViewModel(
                                                 loyaltyDiscountPaise
                                         ).coerceAtLeast(0L)
 
-                                val canEarn = normalDiscountPaise <= 0L ||
-                                        program.allowEarnOnDiscountedBills
-
+//                                val canEarn = normalDiscountPaise <= 0L ||
+//                                        _allowPointsOnDiscountedBill.value
+                                val canEarn = _allowPointsOnDiscountedBill.value
 
                                 val points = if (
                                     canEarn &&
@@ -1405,8 +1424,16 @@ class BillViewModel(
                                         loyaltyDiscountPaise
                                 ).coerceAtLeast(0L)
 
-                        val canEarn = normalDiscountPaise <= 0L ||
-                                program.allowEarnOnDiscountedBills
+                        Log.d(
+                            "TEXT_PRINT",
+                            "Normal discount = $normalDiscountPaise | " +
+                                    "Cashier switch = ${_allowPointsOnDiscountedBill.value} | " +
+                                    "Can earn = ${normalDiscountPaise <= 0L || _allowPointsOnDiscountedBill.value}"
+                        )
+
+//                        val canEarn = normalDiscountPaise <= 0L ||
+//                                _allowPointsOnDiscountedBill.value
+                        val canEarn = _allowPointsOnDiscountedBill.value
 
                         earnedPoints = if (
                             canEarn &&
