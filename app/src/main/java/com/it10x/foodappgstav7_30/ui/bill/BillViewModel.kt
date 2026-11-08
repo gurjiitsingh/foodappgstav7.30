@@ -1254,6 +1254,9 @@ class BillViewModel(
                                 orderType = orderType
                             )
 
+                        Log.d("VIRTUAL_ORDER", "Completed: $tableName")
+                        Log.d("VIRTUAL_ORDER", "Next: ${nextVirtualTable?.tableName}")
+
                         if (nextVirtualTable != null) {
 
                             posSessionViewModel.setNextVirtualTable(

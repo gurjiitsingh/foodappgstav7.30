@@ -130,7 +130,7 @@ class POSOrdersRepository(
 
             // The order is completely finished.
             // Remove the virtual table/session.
-            virtualTableDao.deleteById(tableNo)
+         //   virtualTableDao.deleteById(tableNo)
 
             Log.d(
                 "VIRTUAL_TABLE",

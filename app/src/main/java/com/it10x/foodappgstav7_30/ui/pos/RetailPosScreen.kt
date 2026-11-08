@@ -708,9 +708,9 @@ fun RetailPosScreen(
 
                 if (showTableSelector && (orderType == "TAKEAWAY" || orderType == "DELIVERY")) {
 
-                    LaunchedEffect(orderType) {
-                        virtualTableViewModel.deleteOldTables(orderType)
-                    }
+//                    LaunchedEffect(orderType) {
+//                        virtualTableViewModel.deleteOldTables(orderType)
+//                    }
 //                    VirtualTableSelectorGrid(
 //                        tables = virtualTables,
 //                        selectedTableId = tableId,

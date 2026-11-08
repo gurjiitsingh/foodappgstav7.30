@@ -54,6 +54,8 @@ class KitchenViewModel(
 
     //  var isFromFirestore = false
     private val firestore = FirebaseFirestore.getInstance()
+
+    private val db = AppDatabaseProvider.get(app)
     private val _loading = MutableStateFlow(false)
     val loading: StateFlow<Boolean> get() = _loading
     private val kotItemDao =
@@ -76,17 +78,18 @@ class KitchenViewModel(
 
 
     private val kotRepository = KotRepository(
-        AppDatabaseProvider.get(app).kotBatchDao(),
-        AppDatabaseProvider.get(app).kotItemDao(),
-        AppDatabaseProvider.get(app).tableDao()
+        db.kotBatchDao(),
+        db.kotItemDao(),
+        db.tableDao()
     )
 
     private val cartRepository = CartRepository(
-        AppDatabaseProvider.get(app).cartDao(),
-        AppDatabaseProvider.get(app).tableDao()
+        db.cartDao(),
+        db.tableDao()
     )
 
     private val virtualTableRepository = VirtualTableRepository(
+        db = db,
         AppDatabaseProvider.get(app).virtualTableDao(),
         AppDatabaseProvider.get(app).cartDao(),
         AppDatabaseProvider.get(app).kotItemDao(),

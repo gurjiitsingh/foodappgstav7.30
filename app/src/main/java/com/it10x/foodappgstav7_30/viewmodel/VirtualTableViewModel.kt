@@ -21,8 +21,9 @@ import java.text.SimpleDateFormat
 
 import java.util.Calendar
 import java.util.Locale
+import java.util.TimeZone
 import java.util.UUID
-
+import androidx.room.withTransaction
 
 class VirtualTableViewModel(
     app: Application
@@ -87,210 +88,113 @@ class VirtualTableViewModel(
     }
 
 
+//    private fun getTodayDate(): String {
+//        return SimpleDateFormat(
+//            "yyyy-MM-dd",
+//            Locale.getDefault()
+//        ).format(System.currentTimeMillis())
+//    }
+
+//    private fun getTodayDate(): String {
+//        val zone = TimeZone.getTimeZone(outletTimeZone)
+//
+//        val dateFormat = SimpleDateFormat("yyyy-MM-dd", Locale.US)
+//        dateFormat.timeZone = zone
+//
+//        return dateFormat.format(System.currentTimeMillis())
+//    }
+
     private fun getTodayDate(): String {
-        return SimpleDateFormat(
-            "yyyy-MM-dd",
-            Locale.getDefault()
-        ).format(System.currentTimeMillis())
+        val dateFormat = SimpleDateFormat("yyyy-MM-dd", Locale.US)
+        dateFormat.timeZone = TimeZone.getTimeZone("Asia/Kolkata")
+
+        return dateFormat.format(System.currentTimeMillis())
     }
 
-    fun checkAndResetForNewDay() {
-        viewModelScope.launch {
 
-            val today = getTodayDate()
-
-            val takeawayCounter =
-                counterDao.get("TAKEAWAY")
-
-            val deliveryCounter =
-                counterDao.get("DELIVERY")
-
-            val savedDate = when {
-                takeawayCounter?.resetDate?.isNotEmpty() == true ->
-                    takeawayCounter.resetDate
-
-                deliveryCounter?.resetDate?.isNotEmpty() == true ->
-                    deliveryCounter.resetDate
-
-                else ->
-                    ""
-            }
-
-            // Same day -> DO NOTHING
-            if (savedDate == today) {
-                return@launch
-            }
-
-            // =====================================================
-            // NEW DAY
-            // =====================================================
-
-            // Delete all old virtual tables.
-            // At this point only NEW/RUNNING tables should exist.
-            dao.deleteAllVirtualTables()
-
-            // Reset TW and DL counters to zero
-            // and save today's date.
-            counterDao.resetCounters(today)
-
-            // If counter rows do not exist yet, create them.
-            if (takeawayCounter == null) {
-                counterDao.upsert(
-                    VirtualTableCounterEntity(
-                        orderType = "TAKEAWAY",
-                        lastNumber = 0,
-                        status = "NEW",
-                        resetDate = today
-                    )
-                )
-            }
-
-            if (deliveryCounter == null) {
-                counterDao.upsert(
-                    VirtualTableCounterEntity(
-                        orderType = "DELIVERY",
-                        lastNumber = 0,
-                        status = "NEW",
-                        resetDate = today
-                    )
-                )
-            }
-        }
-    }
     // =========================================================
 // CREATE / REUSE TAKEAWAY / DELIVERY
 // =========================================================
 
     suspend fun createNew(type: String): VirtualTableEntity {
 
-        val prefix = when (type) {
-            "TAKEAWAY" -> "TW"
-            "DELIVERY" -> "DL"
-            else -> throw IllegalArgumentException(
-                "Invalid virtual table type: $type"
-            )
+        require(type == "TAKEAWAY" || type == "DELIVERY") {
+            "Invalid virtual table type: $type"
         }
 
-        // ---------------------------------------------------------
-        // GET LATEST TABLE FOR THIS ORDER TYPE
-        // ---------------------------------------------------------
+        val prefix = if (type == "TAKEAWAY") "TW" else "DL"
 
-        val currentTable =
-            dao.getLatestByType(type)
+        return db.withTransaction {
 
-        // ---------------------------------------------------------
-        // CASE 1:
-        // NO TABLE EXISTS
-        //
-        // First order:
-        // DELIVERY -> DL1
-        // TAKEAWAY -> TW1
-        // ---------------------------------------------------------
+            val today = getTodayDate()
+            val startOfToday = getStartOfTodayMillis()
 
-        if (currentTable == null) {
+            // Get or initialize this order type's counter
+            var counter = counterDao.get(type)
 
-            val nextNumber =
-                (counterDao.getLastNumber(type) ?: 0) + 1
+            if (counter == null || counter.resetDate != today) {
 
-            val existingCounter = counterDao.get(type)
+                counter = VirtualTableCounterEntity(
+                    orderType = type,
+                    lastNumber = 0,
+                    status = "NEW",
+                    resetDate = today
+                )
+
+                counterDao.upsert(counter)
+            }
+
+            // Find the latest table created today
+            val currentTable =
+                dao.getLatestByTypeForDay(type, startOfToday)
+
+            // Reuse an unused NEW order
+            if (currentTable?.status == "NEW") {
+                return@withTransaction currentTable
+            }
+
+            // Allocate next number
+            val nextNumber = counter.lastNumber + 1
 
             counterDao.upsert(
-                VirtualTableCounterEntity(
-                    orderType = type,
-                    lastNumber = nextNumber,
-                    status = existingCounter?.status ?: "NEW",
-                    resetDate = existingCounter?.resetDate ?: getTodayDate()
-                )
+                counter.copy(lastNumber = nextNumber)
             )
 
             val now = System.currentTimeMillis()
 
-            val newTable =
-                VirtualTableEntity(
-                    id = "${prefix}_${UUID.randomUUID()}",
-                    tableName = "$prefix$nextNumber",
-                    orderType = type,
-                    status = "NEW",
-                    createdAt = now,
-                    updatedAt = now
-                )
-
-            dao.insert(newTable)
-
-            return newTable
-        }
-
-        // ---------------------------------------------------------
-        // CASE 2:
-        // CURRENT TABLE IS NEW / EMPTY
-        //
-        // DO NOT INCREMENT
-        //
-        // Example:
-        // DL1 NEW
-        //
-        // DL -> TW -> DL
-        //
-        // Still DL1
-        // ---------------------------------------------------------
-
-        if (currentTable.status == "NEW") {
-            return currentTable
-        }
-
-        // ---------------------------------------------------------
-        // CASE 3:
-        // CURRENT TABLE IS ALREADY USED
-        //
-        // RUNNING or COMPLETED
-        //
-        // Create next number.
-        //
-        // DL1 RUNNING    -> DL2
-        // DL1 COMPLETED  -> DL2
-        // ---------------------------------------------------------
-
-        if (
-            currentTable.status == "RUNNING" ||
-            currentTable.status == "COMPLETED"
-        ) {
-
-            val nextNumber =
-                (counterDao.getLastNumber(type) ?: 0) + 1
-
-            val existingCounter = counterDao.get(type)
-
-            counterDao.upsert(
-                VirtualTableCounterEntity(
-                    orderType = type,
-                    lastNumber = nextNumber,
-                    status = existingCounter?.status ?: "NEW",
-                    resetDate = existingCounter?.resetDate ?: getTodayDate()
-                )
+            val newTable = VirtualTableEntity(
+                id = "${prefix}_${UUID.randomUUID()}",
+                tableName = "$prefix$nextNumber",
+                orderType = type,
+                status = "NEW",
+                createdAt = now,
+                updatedAt = now
             )
 
-            val now = System.currentTimeMillis()
-
-            val newTable =
-                VirtualTableEntity(
-                    id = "${prefix}_${UUID.randomUUID()}",
-                    tableName = "$prefix$nextNumber",
-                    orderType = type,
-                    status = "NEW",
-                    createdAt = now,
-                    updatedAt = now
-                )
-
             dao.insert(newTable)
 
-            return newTable
+
+
+// Verify insertion using the SAME DAO
+            val savedTable = dao.getById(newTable.id)
+
+            Log.d(
+                "VIRTUAL_ORDER",
+                """
+    CREATE TABLE RESULT
+    Inserted ID = ${newTable.id}
+    Saved ID    = ${savedTable?.id}
+    Saved Name  = ${savedTable?.tableName}
+    Saved Type  = ${savedTable?.orderType}
+    Saved Status = ${savedTable?.status}
+    Total Records = ${dao.getAllTables().size}
+    """.trimIndent()
+            )
+
+            newTable
+
+            newTable
         }
-
-        // ---------------------------------------------------------
-        // FALLBACK
-        // ---------------------------------------------------------
-
-        return currentTable
     }
     // =========================================================
     // START OF TODAY
@@ -333,16 +237,16 @@ class VirtualTableViewModel(
         type: String
     ) {
 
-        viewModelScope.launch {
-
-            val startOfToday =
-                getStartOfToday()
-
-            dao.deleteOldTables(
-                type,
-                startOfToday
-            )
-        }
+//        viewModelScope.launch {
+//
+//            val startOfToday =
+//                getStartOfToday()
+//
+//            dao.deleteOldTables(
+//                type,
+//                startOfToday
+//            )
+//        }
     }
 
 
@@ -367,5 +271,14 @@ class VirtualTableViewModel(
 
             dao.deleteById(id)
         }
+    }
+
+    private fun getStartOfTodayMillis(): Long {
+        return Calendar.getInstance().apply {
+            set(Calendar.HOUR_OF_DAY, 0)
+            set(Calendar.MINUTE, 0)
+            set(Calendar.SECOND, 0)
+            set(Calendar.MILLISECOND, 0)
+        }.timeInMillis
     }
 }

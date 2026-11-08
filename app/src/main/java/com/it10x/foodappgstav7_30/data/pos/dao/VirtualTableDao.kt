@@ -8,10 +8,24 @@ import kotlinx.coroutines.flow.Flow
 interface VirtualTableDao {
 
 
+
     @Query("""
-    DELETE FROM virtual_tables
+    SELECT *
+    FROM virtual_tables
+    WHERE orderType = :type
+      AND createdAt >= :startOfDay
+    ORDER BY createdAt DESC
+    LIMIT 1
 """)
-    suspend fun deleteAllVirtualTables()
+    suspend fun getLatestByTypeForDay(
+        type: String,
+        startOfDay: Long
+    ): VirtualTableEntity?
+
+//    @Query("""
+//    DELETE FROM virtual_tables
+//""")
+//    suspend fun deleteAllVirtualTables()
 
     @Query("""
     SELECT *
@@ -57,6 +71,18 @@ interface VirtualTableDao {
         tableId: String,
         time: Long
     )
+
+    @Query("""
+    SELECT *
+    FROM virtual_tables
+    WHERE tableName = :tableName
+      AND orderType = :orderType
+    LIMIT 1
+""")
+    suspend fun getByName(
+        tableName: String,
+        orderType: String
+    ): VirtualTableEntity?
 
     @Query("""
         SELECT * 

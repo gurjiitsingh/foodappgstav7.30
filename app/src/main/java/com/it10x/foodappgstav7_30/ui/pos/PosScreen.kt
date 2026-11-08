@@ -185,9 +185,7 @@ fun PosScreen(
     }
 
 
-    LaunchedEffect(Unit) {
-        virtualTableViewModel.checkAndResetForNewDay()
-    }
+
  //   val posViewModel: PosViewModel = viewModel()
 
     //AUTO TABLE WINDOW OPEN

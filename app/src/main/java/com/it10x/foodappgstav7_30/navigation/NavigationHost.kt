@@ -182,6 +182,7 @@ fun NavigationHost(
 
     val virtualTableRepository = remember {
         VirtualTableRepository(
+            db = db,
             virtualDao = db.virtualTableDao(),
             cartDao = db.cartDao(),
             kotDao = db.kotItemDao(),
@@ -278,7 +279,20 @@ fun NavigationHost(
         }
     }
 
+    val runningOrdersDestination = when (posType) {
 
+        PosType.RETAIL -> "retail_pos"
+
+        PosType.FAST_FOOD -> "fastfood_pos"
+
+        PosType.RESTAU -> {
+            when (role) {
+                PosRole.MAIN -> "pos"
+                PosRole.WAITER -> "posWaiter"
+                null -> "device_role_selection"
+            }
+        }
+    }
 
     NavHost(
         navController = navController,
@@ -324,6 +338,42 @@ fun NavigationHost(
                 outlet = outlet
             )
         }
+//        composable("running_orders") {
+//
+//            val virtualTableViewModel: VirtualTableViewModel = viewModel()
+//
+//            RunningOrdersScreen(
+//                viewModel = virtualTableViewModel,
+//
+//                onTableSelected = { table ->
+//
+//                    // ---------------------------------------------------------
+//                    // SET THE SELECTED VIRTUAL TABLE IN THE SHARED POS SESSION
+//                    // ---------------------------------------------------------
+//
+//                    posSessionViewModel.setNextVirtualTable(
+//                        tableId = table.id,
+//                        tableName = table.tableName,
+//                        orderType = table.orderType
+//                    )
+//
+//                    // ---------------------------------------------------------
+//                    // OPEN POS FOR THIS EXACT VIRTUAL TABLE
+//                    // ---------------------------------------------------------
+//
+//                    navController.navigate(
+//                        "pos?tableId=${table.id}" +
+//                                "&tableName=${table.tableName}" +
+//                                "&orderType=${table.orderType}"
+//                    )
+//                },
+//
+//                onClose = {
+//                    navController.popBackStack()
+//                }
+//            )
+//        }
+
         composable("running_orders") {
 
             val virtualTableViewModel: VirtualTableViewModel = viewModel()
@@ -333,25 +383,15 @@ fun NavigationHost(
 
                 onTableSelected = { table ->
 
-                    // ---------------------------------------------------------
-                    // SET THE SELECTED VIRTUAL TABLE IN THE SHARED POS SESSION
-                    // ---------------------------------------------------------
-
+                    // Set the selected virtual table in the shared POS session
                     posSessionViewModel.setNextVirtualTable(
                         tableId = table.id,
                         tableName = table.tableName,
                         orderType = table.orderType
                     )
 
-                    // ---------------------------------------------------------
-                    // OPEN POS FOR THIS EXACT VIRTUAL TABLE
-                    // ---------------------------------------------------------
-
-                    navController.navigate(
-                        "pos?tableId=${table.id}" +
-                                "&tableName=${table.tableName}" +
-                                "&orderType=${table.orderType}"
-                    )
+                    // Open the correct POS screen
+                    navController.navigate(runningOrdersDestination)
                 },
 
                 onClose = {

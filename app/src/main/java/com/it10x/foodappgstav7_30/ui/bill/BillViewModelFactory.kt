@@ -55,6 +55,7 @@ class BillViewModelFactory(
 
             // ✅ ADD THIS (Missing Earlier)
             val virtualTableRepository = VirtualTableRepository(
+                db = db,
                 db.virtualTableDao(),
                 db.cartDao(),
                 db.kotItemDao(),

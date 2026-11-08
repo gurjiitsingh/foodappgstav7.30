@@ -231,9 +231,7 @@ fun FastFoodPosScreen(
     }
 
 
-    LaunchedEffect(Unit) {
-        virtualTableViewModel.checkAndResetForNewDay()
-    }
+
     //   val posViewModel: PosViewModel = viewModel()
 
     //AUTO TABLE WINDOW OPEN
@@ -434,6 +432,28 @@ fun FastFoodPosScreen(
             }
 
             val scope = rememberCoroutineScope()
+
+
+            val switchVirtualOrderType: (String) -> Unit = { type ->
+
+                selectedNewOrderType = type
+
+                scope.launch {
+                    val newTable = virtualTableViewModel.createNew(type)
+
+                    posSessionViewModel.setTable(
+                        tableId = newTable.id,
+                        tableName = newTable.tableName,
+                        orderType = newTable.orderType
+                    )
+
+                    Log.d(
+                        "POS_ORDER",
+                        "SWITCH ORDER TYPE: $type, ${newTable.tableName}"
+                    )
+                }
+            }
+
             // ---------- PRODUCTS ----------
             Column(
                 modifier = Modifier
@@ -441,216 +461,7 @@ fun FastFoodPosScreen(
                     .padding(12.dp)
             ) {
 
-                // ---------- ORDER CONTROLS PHONE ----------
-                if (isPhone) {
 
-                    val commonShape = RoundedCornerShape(8.dp)
-                    val commonHeight = 52.dp
-
-                    // ===== PHONE ROW 1 : ORDER TYPES + CATEGORY =====
-                    Row(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(bottom = 8.dp),
-                        horizontalArrangement = Arrangement.spacedBy(8.dp),
-                        verticalAlignment = Alignment.CenterVertically
-                    )
-                    {
-
-                        // -------- ORDER TYPE ICON BUTTONS PHONE--------
-
-                        // 🛍️ Takeaway icon
-                        IconButton(
-                            onClick = {
-                                selectedNewOrderType = "TAKEAWAY"
-                            },
-                            modifier = Modifier
-                                .size(commonHeight)
-                                .background(
-                                    if (orderType == "TAKEAWAY")
-                                        MaterialTheme.colorScheme.primary
-                                    else
-                                        MaterialTheme.colorScheme.surfaceVariant,
-                                    shape = commonShape
-                                )
-                        ) {
-                            Icon(
-                                imageVector = Icons.Default.ShoppingBag,
-                                contentDescription = "Takeaway",
-                                tint =
-                                    if (orderType == "TAKEAWAY")
-                                        MaterialTheme.colorScheme.onPrimary
-                                    else
-                                        MaterialTheme.colorScheme.onSurfaceVariant
-                            )
-                        }
-
-                        // 🚚 Delivery icon
-                        IconButton(
-                            onClick = {
-                                selectedNewOrderType = "DELIVERY"
-                            },
-                            modifier = Modifier
-                                .size(commonHeight)
-                                .background(
-                                    if (orderType == "DELIVERY")
-                                        MaterialTheme.colorScheme.primary
-                                    else
-                                        MaterialTheme.colorScheme.surfaceVariant,
-                                    shape = commonShape
-                                )
-                        ) {
-                            Icon(
-                                imageVector = Icons.Default.LocalShipping,
-                                contentDescription = "Delivery",
-                                tint =
-                                    if (orderType == "DELIVERY")
-                                        MaterialTheme.colorScheme.onPrimary
-                                    else
-                                        MaterialTheme.colorScheme.onSurfaceVariant
-                            )
-                        }
-
-                        // -------- CATEGORY BUTTON --------
-                        IconButton(
-                            onClick = { showCategorySelector = true },
-                            modifier = Modifier
-                                .size(commonHeight)
-                                .background(MaterialTheme.colorScheme.primary, shape = commonShape)
-                        ) {
-                            Icon(
-                                imageVector = Icons.Default.Category,
-                                contentDescription = "Category",
-                                tint = MaterialTheme.colorScheme.onPrimary
-                            )
-                        }
-                        IconButton(
-                            onClick = {
-                                showKitchen = true
-                            },
-                            modifier = Modifier
-                                .size(commonHeight)
-                                .background(
-                                    MaterialTheme.colorScheme.surfaceVariant,
-                                    shape = commonShape
-                                )
-                        ) {
-                            Icon(
-                                imageVector = Icons.Default.ShoppingCart,
-                                contentDescription = "Cart",
-                                tint = MaterialTheme.colorScheme.onSurfaceVariant
-                            )
-                        }
-
-
-                        // 🧾 Bill Button
-                        // ---------------- BILL ITEMS ----------------
-
-
-                        Button(
-                            modifier = Modifier
-                                .size(56.dp)
-                                .padding(4.dp),
-                            enabled = canOpenBill,
-                            onClick = {
-                                if (!canOpenBill) return@Button
-                                showBill = true
-                            },
-                            contentPadding = PaddingValues(0.dp),
-                            colors = ButtonDefaults.buttonColors(
-                                containerColor =
-                                    if (canOpenBill) Color(0xFF66BB6A) // 🟢 Green when bill exists
-                                    else Color(0xFFBDBDBD),            // ⚪ Grey when no bill
-                                contentColor = Color.White,
-                                disabledContainerColor = Color(0xFFBDBDBD),
-                                disabledContentColor = Color.White
-                            ),
-                            shape = RoundedCornerShape(10.dp)
-                        ) {
-                            Icon(
-                                imageVector = Icons.Default.Receipt,
-                                contentDescription = "Bill",
-                                tint = Color.White,
-                                modifier = Modifier.size(18.dp)
-                            )
-                        }
-
-
-
-                    }
-
-                    // ===== PHONE ROW 2 : TABLE + SEARCH + CLEAR =====
-                    Row(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(bottom = 10.dp),
-                        horizontalArrangement = Arrangement.spacedBy(8.dp),
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-
-                        Box(
-                            modifier = Modifier
-                                .weight(1f)
-                                .height(commonHeight)
-                                .clickable { showSearchKeyboard = true }
-                        ) {
-                            Box(
-                                modifier = Modifier
-                                    // .weight(1f)
-                                    .height(commonHeight)
-                                    .clickable { showSearchKeyboard = true }
-                            ) {
-                                OutlinedTextField(
-                                    value = searchQuery,
-                                    onValueChange = {},
-                                    modifier = Modifier.fillMaxSize(),
-                                    placeholder = { Text("Search...") },
-                                    singleLine = true,
-                                    readOnly = true,
-                                    enabled = false,
-                                    textStyle = MaterialTheme.typography.bodyMedium
-                                )
-                            }
-
-
-                        }
-
-                        IconButton(
-                            onClick = {
-                                searchQuery = ""
-                                productsViewModel.setSearchQuery("")
-                            },
-                            modifier = Modifier
-                                .size(commonHeight)
-                                .background(MaterialTheme.colorScheme.surfaceVariant, shape = commonShape)
-                        ) {
-                            Icon(
-                                imageVector = Icons.Default.Close,
-                                contentDescription = "Clear",
-                                tint = MaterialTheme.colorScheme.onSurfaceVariant
-                            )
-                        }
-
-                        // ⋮ More Button
-                        IconButton(
-                            onClick = {
-                                // 🔥 Trigger the More handler
-                                productsViewModel.showMoreMatches(true)
-                            },
-                            modifier = Modifier
-                                .size(commonHeight)
-                                .background(MaterialTheme.colorScheme.surfaceVariant, shape = commonShape)
-                        ) {
-                            Icon(
-                                imageVector = Icons.Default.MoreVert,
-                                contentDescription = "More Options",
-                                tint = MaterialTheme.colorScheme.onSurfaceVariant
-                            )
-                        }
-
-
-                    }
-                }
 
                 // --------- ORDER CONTROLS TABLET ------
 
@@ -663,7 +474,8 @@ fun FastFoodPosScreen(
                             .padding(bottom = 8.dp),
                         horizontalArrangement = Arrangement.spacedBy(6.dp),
                         verticalAlignment = Alignment.CenterVertically
-                    ) {
+                    )
+                    {
 
                         // ================= COMMON COLORS =================
                         val selectedBg = MaterialTheme.colorScheme.primary
@@ -683,7 +495,7 @@ fun FastFoodPosScreen(
 
                         IconButton(
                             onClick = {
-                                selectedNewOrderType = "TAKEAWAY"
+                                switchVirtualOrderType("TAKEAWAY")
                             },
                             modifier = Modifier
                                 .size(commonHeight)
@@ -717,7 +529,7 @@ fun FastFoodPosScreen(
 // ================= DELIVERY =================
                         IconButton(
                             onClick = {
-                                selectedNewOrderType = "DELIVERY"
+                                switchVirtualOrderType("DELIVERY")
                             },
                             modifier = Modifier
                                 .size(commonHeight)
@@ -884,7 +696,216 @@ fun FastFoodPosScreen(
                 }
 
 
+                // ---------- ORDER CONTROLS PHONE ----------
+                if (isPhone) {
 
+                    val commonShape = RoundedCornerShape(8.dp)
+                    val commonHeight = 52.dp
+
+                    // ===== PHONE ROW 1 : ORDER TYPES + CATEGORY =====
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(bottom = 8.dp),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    )
+                    {
+
+                        // -------- ORDER TYPE ICON BUTTONS PHONE--------
+
+                        // 🛍️ Takeaway icon
+                        IconButton(
+                            onClick = {
+                                switchVirtualOrderType("TAKEAWAY")
+                            },
+                            modifier = Modifier
+                                .size(commonHeight)
+                                .background(
+                                    if (orderType == "TAKEAWAY")
+                                        MaterialTheme.colorScheme.primary
+                                    else
+                                        MaterialTheme.colorScheme.surfaceVariant,
+                                    shape = commonShape
+                                )
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.ShoppingBag,
+                                contentDescription = "Takeaway",
+                                tint =
+                                    if (orderType == "TAKEAWAY")
+                                        MaterialTheme.colorScheme.onPrimary
+                                    else
+                                        MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        }
+
+                        // 🚚 Delivery icon
+                        IconButton(
+                            onClick = {
+                                switchVirtualOrderType("DELIVERY")
+                            },
+                            modifier = Modifier
+                                .size(commonHeight)
+                                .background(
+                                    if (orderType == "DELIVERY")
+                                        MaterialTheme.colorScheme.primary
+                                    else
+                                        MaterialTheme.colorScheme.surfaceVariant,
+                                    shape = commonShape
+                                )
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.LocalShipping,
+                                contentDescription = "Delivery",
+                                tint =
+                                    if (orderType == "DELIVERY")
+                                        MaterialTheme.colorScheme.onPrimary
+                                    else
+                                        MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        }
+
+                        // -------- CATEGORY BUTTON --------
+                        IconButton(
+                            onClick = { showCategorySelector = true },
+                            modifier = Modifier
+                                .size(commonHeight)
+                                .background(MaterialTheme.colorScheme.primary, shape = commonShape)
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.Category,
+                                contentDescription = "Category",
+                                tint = MaterialTheme.colorScheme.onPrimary
+                            )
+                        }
+                        IconButton(
+                            onClick = {
+                                showKitchen = true
+                            },
+                            modifier = Modifier
+                                .size(commonHeight)
+                                .background(
+                                    MaterialTheme.colorScheme.surfaceVariant,
+                                    shape = commonShape
+                                )
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.ShoppingCart,
+                                contentDescription = "Cart",
+                                tint = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        }
+
+
+                        // 🧾 Bill Button
+                        // ---------------- BILL ITEMS ----------------
+
+
+                        Button(
+                            modifier = Modifier
+                                .size(56.dp)
+                                .padding(4.dp),
+                            enabled = canOpenBill,
+                            onClick = {
+                                if (!canOpenBill) return@Button
+                                showBill = true
+                            },
+                            contentPadding = PaddingValues(0.dp),
+                            colors = ButtonDefaults.buttonColors(
+                                containerColor =
+                                    if (canOpenBill) Color(0xFF66BB6A) // 🟢 Green when bill exists
+                                    else Color(0xFFBDBDBD),            // ⚪ Grey when no bill
+                                contentColor = Color.White,
+                                disabledContainerColor = Color(0xFFBDBDBD),
+                                disabledContentColor = Color.White
+                            ),
+                            shape = RoundedCornerShape(10.dp)
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.Receipt,
+                                contentDescription = "Bill",
+                                tint = Color.White,
+                                modifier = Modifier.size(18.dp)
+                            )
+                        }
+
+
+
+                    }
+
+                    // ===== PHONE ROW 2 : TABLE + SEARCH + CLEAR =====
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(bottom = 10.dp),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+
+                        Box(
+                            modifier = Modifier
+                                .weight(1f)
+                                .height(commonHeight)
+                                .clickable { showSearchKeyboard = true }
+                        ) {
+                            Box(
+                                modifier = Modifier
+                                    // .weight(1f)
+                                    .height(commonHeight)
+                                    .clickable { showSearchKeyboard = true }
+                            ) {
+                                OutlinedTextField(
+                                    value = searchQuery,
+                                    onValueChange = {},
+                                    modifier = Modifier.fillMaxSize(),
+                                    placeholder = { Text("Search...") },
+                                    singleLine = true,
+                                    readOnly = true,
+                                    enabled = false,
+                                    textStyle = MaterialTheme.typography.bodyMedium
+                                )
+                            }
+
+
+                        }
+
+                        IconButton(
+                            onClick = {
+                                searchQuery = ""
+                                productsViewModel.setSearchQuery("")
+                            },
+                            modifier = Modifier
+                                .size(commonHeight)
+                                .background(MaterialTheme.colorScheme.surfaceVariant, shape = commonShape)
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.Close,
+                                contentDescription = "Clear",
+                                tint = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        }
+
+                        // ⋮ More Button
+                        IconButton(
+                            onClick = {
+                                // 🔥 Trigger the More handler
+                                productsViewModel.showMoreMatches(true)
+                            },
+                            modifier = Modifier
+                                .size(commonHeight)
+                                .background(MaterialTheme.colorScheme.surfaceVariant, shape = commonShape)
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.MoreVert,
+                                contentDescription = "More Options",
+                                tint = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        }
+
+
+                    }
+                }
 
 
                 // ---------- PRODUCT LIST ----------
@@ -917,11 +938,6 @@ fun FastFoodPosScreen(
                     )
                 }
 
-
-
-
-
-
                 LaunchedEffect(orderType) {
                     if (orderType == "TAKEAWAY" || orderType == "DELIVERY") {
                         virtualTableViewModel.setOrderType(orderType)
@@ -929,39 +945,11 @@ fun FastFoodPosScreen(
                 }
 
 
-                if (showTableSelector && (orderType == "TAKEAWAY" || orderType == "DELIVERY")) {
-
-                    LaunchedEffect(orderType) {
-                        virtualTableViewModel.deleteOldTables(orderType)
-                    }
-
-                }
-
-
-
-                if (showTableSelector && (orderType == "DINE_IN")) {
-
-                    TableSelectorGrid(
-                        tables = tables, // ✅ use dynamic list
-                        selectedTable = tableId,
-                        onTableSelected = { tableId ->
-                            val table = tables.first { it.table.id == tableId }.table
-                            posSessionViewModel.setTable(
-                                tableId = table.id,
-                                tableName = table.tableName
-                            )
-                            searchQuery = ""
-                            // 🔹 Init DINE_IN session
-                            //cartViewModel.initSession("DINE_IN", table.id)
-                            showTableSelector = false
-                        },
-
-
-                        onDismiss = { showTableSelector = false }
-                    )
-                }
 
             }
+
+
+
 
             if (!isPhone) {
                 Box(
