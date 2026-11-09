@@ -127,27 +127,11 @@ fun FastFoodPosScreen(
         orderType = sessionOrderType ?: "TAKEAWAY"
     }
 
-
-
-
-
     val sessionId by cartViewModel.sessionKey.collectAsState()
-
     val tableId1 by posSessionViewModel.tableId.collectAsState()
     val tableId = tableId1 ?: ""
-
-//    Log.d(
-//        "POS_SESSION",
-//        "PosScreen VM = ${System.identityHashCode(posSessionViewModel)}, tableId=$tableId1"
-//    )
-
-
     val tables by posTableViewModel.tables.collectAsState()
-
     val tableVm: PosTableViewModel = viewModel()
-
-
-
     val virtualTableViewModel: VirtualTableViewModel = viewModel()
 
     val virtualTables by virtualTableViewModel.tables.collectAsState()
@@ -156,29 +140,68 @@ fun FastFoodPosScreen(
         mutableStateOf("TAKEAWAY")
     }
 
+//    LaunchedEffect(Unit) {
+//
+//        // Same action as clicking TAKEAWAY button
+//
+//        orderType = "TAKEAWAY"
+//
+//        val newTable =
+//            virtualTableViewModel.createNew(
+//                "TAKEAWAY"
+//            )
+//
+//        posSessionViewModel.setTable(
+//            tableId = newTable.id,
+//            tableName = newTable.tableName,
+//            orderType = "TAKEAWAY"
+//        )
+//
+//        Log.d(
+//            "POS_ORDER",
+//            "AUTO TAKEAWAY selected: ${newTable.tableName}, id=${newTable.id}"
+//        )
+//    }
+
     LaunchedEffect(Unit) {
 
-        // Same action as clicking TAKEAWAY button
+        val currentTableId = posSessionViewModel.tableId.value
+        val currentOrderType = posSessionViewModel.orderType.value
 
-        orderType = "TAKEAWAY"
+        // If a virtual order was selected from Running Orders,
+        // keep that exact order.
+        if (
+            !currentTableId.isNullOrBlank() &&
+            (currentOrderType == "TAKEAWAY" || currentOrderType == "DELIVERY")
+        ) {
+            orderType = currentOrderType
+            selectedNewOrderType = currentOrderType
 
-        val newTable =
-            virtualTableViewModel.createNew(
-                "TAKEAWAY"
+            Log.d(
+                "POS_ORDER",
+                "RESTORED EXISTING ORDER: $currentTableId, $currentOrderType"
             )
+
+            return@LaunchedEffect
+        }
+
+        // No existing virtual order: create the initial takeaway order.
+        val newTable = virtualTableViewModel.createNew("TAKEAWAY")
 
         posSessionViewModel.setTable(
             tableId = newTable.id,
             tableName = newTable.tableName,
-            orderType = "TAKEAWAY"
+            orderType = newTable.orderType
         )
+
+        orderType = newTable.orderType
+        selectedNewOrderType = newTable.orderType
 
         Log.d(
             "POS_ORDER",
-            "AUTO TAKEAWAY selected: ${newTable.tableName}, id=${newTable.id}"
+            "INITIAL ORDER CREATED: ${newTable.tableName}, id=${newTable.id}"
         )
     }
-
 
 // --------------------------------------------------
 // SELECTED TABLE NAME
@@ -288,14 +311,6 @@ fun FastFoodPosScreen(
     var selectedCatId by remember {
         mutableStateOf<String?>(FAVORITES_CATEGORY_ID)
     }
-
-//    LaunchedEffect(categories) {
-//        if (selectedCatId == null && categories.isNotEmpty()) {
-//            val firstId = categories.first().id
-//            selectedCatId = firstId
-//            productsViewModel.setCategory(firstId)  // 🔥 VERY IMPORTANT
-//        }
-//    }
 
     LaunchedEffect(Unit) {
         productsViewModel.setCategory(FAVORITES_CATEGORY_ID)
