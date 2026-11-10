@@ -44,8 +44,12 @@ data class PosKotItemEntity(
     val modifierTotal: Double,
     val quantity: Int,
 
+    val taxCategory: String,
     val taxRate: Double,
-    val taxType: String,
+    val taxType: String,          // inclusive | exclusive
+    val taxRate1: Double? = null,
+    val taxType1: String? = null,
+
 
     val status: String,                 // PENDING / DONE /DELETED
     val note: String = "",

@@ -105,6 +105,7 @@ class ProductSyncRepository(
                         ?.toDouble() ?: 0.0,
 
                 // ------------ TAX ------------
+                taxCategory = data["taxCategory"] as? String ?: "FOOD_GST",
                 taxRate = (data["taxRate"] as? Number)?.toDouble(),
                 taxType = data["taxType"] as? String,
                 taxRate1 = (data["taxRate1"] as? Number)?.toDouble(),
@@ -129,6 +130,7 @@ hasVariants  = ${product.hasVariants}
 hasModifiers  = ${product.hasModifiers}
 price        = ${product.price}
 discount     = ${product.discountPrice ?: "null"}
+taxCategory     = ${product.taxCategory ?: "null"}
 """.trimIndent()
             )
 

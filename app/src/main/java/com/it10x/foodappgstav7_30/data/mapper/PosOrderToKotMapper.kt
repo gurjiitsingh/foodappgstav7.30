@@ -51,8 +51,13 @@ object PosOrderToKotMapper {
                 modifierTotal = 0.0,
                 quantity = item.quantity,
 
+                taxCategory = "FOOD_GST",
                 taxRate = item.taxRate,
                 taxType = item.taxType,
+                taxRate1 = 0.0,
+                taxType1 = "exclusive",
+
+
 
                 status = "DONE",
                 kitchenPrinted = false,

@@ -33,7 +33,7 @@ object BillCalculator {
 
                         Log.d(
                 "POS_MODIFIER",
-                "ITMENAME=${it.name}, MODIFIER PRICE=${modifierPrice} ,TableId=${it.tableNo} "
+                "ITMENAME=${it.name}, taxCat=${it.taxCategory} taxType1=${it.taxRate1} ${it.taxType1} "
             )
 
             //  val base = it.basePrice

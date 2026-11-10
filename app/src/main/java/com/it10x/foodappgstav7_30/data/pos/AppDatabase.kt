@@ -79,7 +79,7 @@ import com.it10x.foodappgstav7_30.data.pos.dao.loyalty.*
         LoyaltyCampaignUsageEntity::class,
         LoyaltyReferralEntity::class,
     ],
-    version = 164,              // ⬆️ increment version since schema changed
+    version = 165  ,              // ⬆️ increment version since schema changed
     exportSchema = true
 )
 abstract class AppDatabase : RoomDatabase() {

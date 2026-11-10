@@ -104,6 +104,10 @@ object OnlineOrderMapper {
                 taxRate = (item.taxRate as? Number)?.toDouble() ?: 0.0,
                 taxType = "exclusive",
 
+                taxCategory = "FOOD_GST",
+                taxRate1 =   0.0,
+                taxType1 = "exclusive",
+
                 // ⭐ THIS WAS MISSING
                 modifiersJson = modifiersJson,
                 note = item.note ?: "",

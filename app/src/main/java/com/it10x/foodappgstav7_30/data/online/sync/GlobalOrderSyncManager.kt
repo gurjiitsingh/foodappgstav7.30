@@ -310,11 +310,17 @@ class GlobalOrderSyncManager(
 
                                         quantity =
                                             (itemDoc.getLong("quantity") ?: 1L).toInt(),
-
+                                        taxCategory =  itemDoc.getString("taxCategory") ?: "",
                                         taxRate =
                                             itemDoc.getDouble("taxRate") ?: 0.0,
 
                                         taxType = "exclusive",
+
+                                        taxRate1 =
+                                            itemDoc.getDouble("taxRate1") ?: 0.0,
+
+                                        taxType1 = "exclusive",
+
 
                                         note =
                                             itemDoc.getString("note") ?: "",

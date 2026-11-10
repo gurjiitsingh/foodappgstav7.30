@@ -36,6 +36,7 @@ import androidx.compose.foundation.border
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Category
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.DeliveryDining
@@ -133,6 +134,21 @@ fun PosScreen(
     val virtualTableViewModel: VirtualTableViewModel = viewModel()
 
     val virtualTables by virtualTableViewModel.tables.collectAsState()
+
+
+    var selectedNewOrderType by rememberSaveable {
+        mutableStateOf(
+            if (sessionOrderType == "DELIVERY") "DELIVERY"
+            else "TAKEAWAY"
+        )
+    }
+
+// Keep the New Order button synchronized with the active session.
+    LaunchedEffect(sessionOrderType) {
+        if (sessionOrderType == "TAKEAWAY" || sessionOrderType == "DELIVERY") {
+            selectedNewOrderType = sessionOrderType
+        }
+    }
 
 // --------------------------------------------------
 // SELECTED TABLE NAME
@@ -356,6 +372,29 @@ fun PosScreen(
             }
 
             val scope = rememberCoroutineScope()
+
+            val switchVirtualOrderType: (String) -> Unit = { type ->
+
+                selectedNewOrderType = type
+
+                scope.launch {
+                    val newTable = virtualTableViewModel.createNew(type)
+
+                    posSessionViewModel.setTable(
+                        tableId = newTable.id,
+                        tableName = newTable.tableName,
+                        orderType = newTable.orderType
+                    )
+
+                    orderType = newTable.orderType
+
+                    Log.d(
+                        "POS_ORDER",
+                        "SWITCH ORDER TYPE: $type, ${newTable.tableName}"
+                    )
+                }
+            }
+
             // ---------- PRODUCTS ----------
             Column(
                 modifier = Modifier
@@ -425,26 +464,7 @@ fun PosScreen(
                         // ================= TAKEAWAY =================
                         IconButton(
                             onClick = {
-                                scope.launch {
-
-                                    val newTable =
-                                        virtualTableViewModel.createNew(
-                                            type = "TAKEAWAY"
-                                        )
-
-                                    orderType = "TAKEAWAY"
-
-                                    posSessionViewModel.setTable(
-                                        tableId = newTable.id,
-                                        tableName = newTable.tableName,
-                                        orderType = "TAKEAWAY",
-                                    )
-
-                                    Log.d(
-                                        "POS_ORDER",
-                                        "TAKEAWAY selected: ${newTable.tableName}"
-                                    )
-                                }
+                                switchVirtualOrderType("TAKEAWAY")
                             },
                             modifier = Modifier
                                 .size(commonHeight)
@@ -478,26 +498,7 @@ fun PosScreen(
 // ================= DELIVERY =================
                         IconButton(
                             onClick = {
-                                scope.launch {
-
-                                    val newTable =
-                                        virtualTableViewModel.createNew(
-                                            type = "DELIVERY"
-                                        )
-
-                                    orderType = "DELIVERY"
-
-                                    posSessionViewModel.setTable(
-                                        tableId = newTable.id,
-                                        tableName = newTable.tableName,
-                                        orderType = "DELIVERY",
-                                    )
-
-                                    Log.d(
-                                        "POS_ORDER",
-                                        "shown in tab : ${newTable.tableName}"
-                                    )
-                                }
+                                switchVirtualOrderType("DELIVERY")
                             },
                             modifier = Modifier
                                 .size(commonHeight)
@@ -525,6 +526,30 @@ fun PosScreen(
                                 else
                                     unselectedContent
                             )
+                        }
+
+                        // ================= NEW ORDER =================
+                        if (orderType == "TAKEAWAY" || orderType == "DELIVERY") {
+                            IconButton(
+                                onClick = {
+                                    scope.launch {
+                                        val newTable = virtualTableViewModel.createNew(selectedNewOrderType)
+
+                                        posSessionViewModel.setTable(
+                                            tableId = newTable.id,
+                                            tableName = newTable.tableName,
+                                            orderType = newTable.orderType
+                                        )
+
+                                        orderType = newTable.orderType
+                                    }
+                                }
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Default.Add,
+                                    contentDescription = "New Order"
+                                )
+                            }
                         }
 
 
@@ -677,23 +702,7 @@ fun PosScreen(
                         // 🛍️ Takeaway icon
                         IconButton(
                             onClick = {
-
-                                orderType = "TAKEAWAY"
-
-                                scope.launch {
-
-                                    val newTable =
-                                        virtualTableViewModel.createNew(
-                                            "TAKEAWAY"
-                                        )
-
-                                    posSessionViewModel.setTable(
-                                        tableId = newTable.id,
-                                        tableName = newTable.tableName,
-                                        orderType = "TAKEAWAY"
-                                    )
-                                }
-
+                                switchVirtualOrderType("TAKEAWAY")
                             },
                             modifier = Modifier
                                 .size(commonHeight)
@@ -719,23 +728,7 @@ fun PosScreen(
                         // 🚚 Delivery icon
                         IconButton(
                             onClick = {
-
-                                orderType = "DELIVERY"
-
-                                scope.launch {
-
-                                    val newTable =
-                                        virtualTableViewModel.createNew(
-                                            "DELIVERY"
-                                        )
-
-                                    posSessionViewModel.setTable(
-                                        tableId = newTable.id,
-                                        tableName = newTable.tableName,
-                                        orderType = "DELIVERY"
-                                    )
-                                }
-
+                                switchVirtualOrderType("DELIVERY")
                             },
                             modifier = Modifier
                                 .size(commonHeight)
@@ -755,6 +748,43 @@ fun PosScreen(
                                         MaterialTheme.colorScheme.onPrimary
                                     else
                                         MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        }
+
+                        // ================= NEW ORDER =================
+                        IconButton(
+                            onClick = {
+                                scope.launch {
+
+                                    val type = selectedNewOrderType
+
+                                    val newTable = virtualTableViewModel.createNew(type)
+
+                                    posSessionViewModel.setTable(
+                                        tableId = newTable.id,
+                                        tableName = newTable.tableName,
+                                        orderType = newTable.orderType
+                                    )
+
+                                    orderType = newTable.orderType
+
+                                    Log.d(
+                                        "POS_ORDER",
+                                        "NEW ORDER: $type, ${newTable.tableName}"
+                                    )
+                                }
+                            },
+                            modifier = Modifier
+                                .size(commonHeight)
+                                .background(
+                                    Color(0xFF2E7D32),
+                                    shape = commonShape
+                                )
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.Add,
+                                contentDescription = "New Order",
+                                tint = Color.White
                             )
                         }
 

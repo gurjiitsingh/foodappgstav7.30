@@ -65,6 +65,7 @@ data class ProductEntity(
     // =====================================================
     // TAX (SNAPSHOT FROM WEB)
     // =====================================================
+    val taxCategory: String = "FOOD_GST",
     val taxRate: Double?,
     val taxType: String?,          // inclusive | exclusive
     val taxRate1: Double? = null,
