@@ -788,23 +788,8 @@ fun PosScreen(
                             )
                         }
 
-                        // -------- CATEGORY BUTTON --------
 
-                        IconButton(
-                            onClick = { showCategorySelector = true },
-                            modifier = Modifier
-                                .size(commonHeight)
-                                .background(
-                                    color = Color(0xFF475569), // 🟠 Category
-                                    shape = commonShape
-                                )
-                        ) {
-                            Icon(
-                                imageVector = Icons.Default.Category,
-                                contentDescription = "Category",
-                                tint = Color.White
-                            )
-                        }
+
                         IconButton(
                             onClick = {
                                 showKitchen = true
@@ -933,6 +918,25 @@ fun PosScreen(
                                 imageVector = Icons.Default.MoreVert,
                                 contentDescription = "More Options",
                                 tint = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        }
+
+
+                        // -------- CATEGORY BUTTON --------
+
+                        IconButton(
+                            onClick = { showCategorySelector = true },
+                            modifier = Modifier
+                                .size(commonHeight)
+                                .background(
+                                    color = Color(0xFF475569), // 🟠 Category
+                                    shape = commonShape
+                                )
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.Category,
+                                contentDescription = "Category",
+                                tint = Color.White
                             )
                         }
 
